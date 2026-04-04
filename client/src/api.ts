@@ -3,6 +3,10 @@ import { useCallback, useEffect, useState } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
+function createRequestId() {
+  return `web_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 interface ApiError {
   error: string;
 }
@@ -13,8 +17,10 @@ export async function callApi(
 ) {
   const { token, ...fetchOptions } = options;
   const method = fetchOptions.method ?? "GET";
+  const requestId = createRequestId();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "X-Request-ID": requestId,
   };
 
   if (fetchOptions.headers) {
@@ -28,6 +34,7 @@ export async function callApi(
   }
 
   console.debug("[api] request", {
+    requestId,
     method,
     url: `${API_URL}${endpoint}`,
     hasToken: !!token,
@@ -44,18 +51,22 @@ export async function callApi(
       .json()
       .catch(() => ({ error: "API error" }))) as ApiError;
     console.error("[api] response error", {
+      requestId,
       method,
       endpoint,
       status: response.status,
+      responseRequestId: response.headers.get("X-Request-ID"),
       error,
     });
     throw new Error(error.error || "API error");
   }
 
   console.debug("[api] response ok", {
+    requestId,
     method,
     endpoint,
     status: response.status,
+    responseRequestId: response.headers.get("X-Request-ID"),
   });
   return response.json();
 }
@@ -67,6 +78,7 @@ export function useApiCall() {
     async (endpoint: string, options: RequestInit = {}) => {
       const audience = import.meta.env.VITE_AUTH0_AUDIENCE;
       let token: string | null = null;
+      let tokenSource: "access-token" | "id-token" | "none" = "none";
 
       if (audience) {
         console.debug("[auth] using access token with audience:", audience);
@@ -76,6 +88,7 @@ export function useApiCall() {
           console.error("[auth] getAccessTokenSilently failed:", e);
           return null;
         });
+        tokenSource = token ? "access-token" : "none";
       } else {
         // No custom API configured — use the ID token (always a verifiable JWT)
         const claims = await getIdTokenClaims().catch((e) => {
@@ -92,18 +105,18 @@ export function useApiCall() {
             sub: payload.sub,
             exp: new Date(payload.exp * 1000).toISOString(),
           });
+          tokenSource = "id-token";
         } else {
           console.warn("[auth] no ID token available");
         }
       }
 
-      console.debug(
-        "[api] calling",
-        options.method ?? "GET",
+      console.debug("[api] calling", {
+        method: options.method ?? "GET",
         endpoint,
-        "hasToken:",
-        !!token,
-      );
+        hasToken: !!token,
+        tokenSource,
+      });
       return callApi(endpoint, { ...options, token: token || undefined });
     },
     [getAccessTokenSilently, getIdTokenClaims],

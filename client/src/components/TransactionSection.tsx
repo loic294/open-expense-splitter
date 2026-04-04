@@ -28,6 +28,22 @@ function addCategory(
   );
 }
 
+function summarizeTransaction(transaction: Transaction) {
+  return {
+    id: transaction.id,
+    batchId: transaction.batchId,
+    amount: transaction.amount,
+    name: transaction.name,
+    description: transaction.description,
+    transactionDate: transaction.transactionDate,
+    category: transaction.category,
+    paidById: transaction.paidById,
+    splitType: transaction.splitType,
+    splitMembers: transaction.splitData.includedMemberIds,
+    splitValueCount: Object.keys(transaction.splitData.values).length,
+  };
+}
+
 function AdvancedSplitModal({
   members,
   splitType,
@@ -189,6 +205,9 @@ export default function TransactionSection({ group }: { group: Group }) {
     const fetchTransactions = async () => {
       try {
         setLoadingData(true);
+        console.debug("[transactions] fetch start", {
+          groupId: group.id,
+        });
         const data = await apiCall(
           `/api/spendings?batchId=${encodeURIComponent(group.id)}`,
         );
@@ -198,8 +217,16 @@ export default function TransactionSection({ group }: { group: Group }) {
           ),
         );
         setCategories((data.categories || []) as string[]);
+        console.debug("[transactions] fetch success", {
+          groupId: group.id,
+          total: (data.spendings || []).length,
+          categories: (data.categories || []).length,
+        });
       } catch (error) {
-        console.error("Failed to fetch transactions:", error);
+        console.error("[transactions] fetch failed", {
+          groupId: group.id,
+          error,
+        });
       } finally {
         setLoadingData(false);
       }
@@ -213,6 +240,10 @@ export default function TransactionSection({ group }: { group: Group }) {
     mode: "patch" | "create" = "patch",
   ) => {
     setSavingTransactions((prev) => ({ ...prev, [transaction.id]: true }));
+    console.debug("[transactions] persist start", {
+      mode,
+      transaction: summarizeTransaction(transaction),
+    });
 
     try {
       if (mode === "create") {
@@ -231,10 +262,19 @@ export default function TransactionSection({ group }: { group: Group }) {
           }),
         });
 
+        console.debug("[transactions] create response", {
+          draftId: transaction.id,
+          createdId: response.spending?.id || response.id,
+          hasSpending: !!response.spending,
+        });
+
         if (response.spending) {
           const normalized = normalizeTransaction(response.spending, group);
           setTransactions((prev) => [normalized, ...prev]);
           addCategory(normalized.category, setCategories);
+          console.debug("[transactions] create stored", {
+            transaction: summarizeTransaction(normalized),
+          });
         }
       } else {
         const response = await apiCall(`/api/spendings/${transaction.id}`, {
@@ -253,21 +293,42 @@ export default function TransactionSection({ group }: { group: Group }) {
         });
 
         const normalized = normalizeTransaction(response, group);
+        console.debug("[transactions] patch response", {
+          requestedId: transaction.id,
+          returnedId: normalized.id,
+          transaction: summarizeTransaction(normalized),
+        });
         setTransactions((prev) =>
           prev.map((item) => (item.id === normalized.id ? normalized : item)),
         );
         addCategory(normalized.category, setCategories);
       }
     } catch (error) {
-      console.error("Failed to save transaction:", error);
+      console.error("[transactions] persist failed", {
+        mode,
+        transaction: summarizeTransaction(transaction),
+        error,
+      });
     } finally {
       setSavingTransactions((prev) => ({ ...prev, [transaction.id]: false }));
+      console.debug("[transactions] persist end", {
+        mode,
+        transactionId: transaction.id,
+      });
     }
   };
 
   const scheduleTransactionSave = (transaction: Transaction) => {
     clearTransactionTimer(transaction.id);
+    console.debug("[transactions] schedule save", {
+      transactionId: transaction.id,
+      delayMs: 350,
+      transaction: summarizeTransaction(transaction),
+    });
     saveTimersRef.current[transaction.id] = window.setTimeout(() => {
+      console.debug("[transactions] debounce fired", {
+        transactionId: transaction.id,
+      });
       persistTransaction(transaction);
     }, 350);
   };
@@ -280,6 +341,12 @@ export default function TransactionSection({ group }: { group: Group }) {
     if (!current) return;
 
     const nextTransaction = updater(current);
+
+    console.debug("[transactions] local update", {
+      transactionId,
+      before: summarizeTransaction(current),
+      after: summarizeTransaction(nextTransaction),
+    });
 
     setTransactions((prev) =>
       prev.map((t) => (t.id === transactionId ? nextTransaction : t)),
@@ -304,6 +371,11 @@ export default function TransactionSection({ group }: { group: Group }) {
       splitType: "equal",
       splitData: createDefaultSplitData(memberIds),
     };
+
+    console.debug("[transactions] create draft", {
+      groupId: group.id,
+      transaction: summarizeTransaction(transaction),
+    });
 
     await persistTransaction(transaction, "create");
   };

@@ -1,5 +1,5 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApiCall } from "./api";
 
 type PageView = "dashboard" | "profile";
@@ -51,6 +51,179 @@ interface Transaction {
   paidById: string;
   splitType: SplitType;
   splitData: SplitData;
+}
+
+interface MemberBalance {
+  memberId: string;
+  paid: number;
+  owed: number;
+  net: number;
+}
+
+interface SettlementStep {
+  fromMemberId: string;
+  toMemberId: string;
+  amount: number;
+}
+
+interface GroupExpenseSummary {
+  totalExpenses: number;
+  balances: MemberBalance[];
+  settlements: SettlementStep[];
+}
+
+function roundCurrency(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function currencyLabel(value: number) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function splitWeights(
+  transaction: Transaction,
+  includedMemberIds: string[],
+): Record<string, number> {
+  const weights: Record<string, number> = {};
+
+  if (transaction.splitType === "equal") {
+    includedMemberIds.forEach((memberId) => {
+      weights[memberId] = 1;
+    });
+    return weights;
+  }
+
+  includedMemberIds.forEach((memberId) => {
+    const raw = transaction.splitData.values[memberId] ?? 0;
+    weights[memberId] = raw > 0 ? raw : 0;
+  });
+
+  const totalWeight = Object.values(weights).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  if (totalWeight <= 0) {
+    includedMemberIds.forEach((memberId) => {
+      weights[memberId] = 1;
+    });
+  }
+
+  return weights;
+}
+
+function buildGroupExpenseSummary(
+  members: GroupMember[],
+  transactions: Transaction[],
+): GroupExpenseSummary {
+  const memberIds = members.map((member) => member.id);
+  const memberSet = new Set(memberIds);
+  const balances = new Map<string, MemberBalance>(
+    memberIds.map((memberId) => [
+      memberId,
+      { memberId, paid: 0, owed: 0, net: 0 },
+    ]),
+  );
+
+  let totalExpenses = 0;
+
+  transactions.forEach((transaction) => {
+    const amount = Number(transaction.amount || 0);
+    if (amount <= 0) {
+      return;
+    }
+
+    totalExpenses += amount;
+
+    const payer = balances.get(transaction.paidById);
+    if (payer) {
+      payer.paid += amount;
+    }
+
+    const included = transaction.splitData.includedMemberIds.filter(
+      (memberId) => memberSet.has(memberId),
+    );
+    const includedMemberIds = included.length > 0 ? included : memberIds;
+    if (includedMemberIds.length === 0) {
+      return;
+    }
+
+    const weights = splitWeights(transaction, includedMemberIds);
+    const totalWeight = Object.values(weights).reduce(
+      (sum, value) => sum + value,
+      0,
+    );
+    const safeTotalWeight =
+      totalWeight > 0 ? totalWeight : includedMemberIds.length;
+
+    includedMemberIds.forEach((memberId) => {
+      const weight = weights[memberId] ?? 1;
+      const share = amount * (weight / safeTotalWeight);
+      const balance = balances.get(memberId);
+      if (balance) {
+        balance.owed += share;
+      }
+    });
+  });
+
+  const normalizedBalances = Array.from(balances.values()).map((balance) => {
+    const paid = roundCurrency(balance.paid);
+    const owed = roundCurrency(balance.owed);
+    const net = roundCurrency(paid - owed);
+    return {
+      ...balance,
+      paid,
+      owed,
+      net,
+    };
+  });
+
+  const creditors = normalizedBalances
+    .filter((balance) => balance.net > 0.009)
+    .map((balance) => ({ ...balance }))
+    .sort((a, b) => b.net - a.net);
+  const debtors = normalizedBalances
+    .filter((balance) => balance.net < -0.009)
+    .map((balance) => ({ ...balance, net: Math.abs(balance.net) }))
+    .sort((a, b) => b.net - a.net);
+
+  const settlements: SettlementStep[] = [];
+  let creditorIndex = 0;
+  let debtorIndex = 0;
+
+  while (creditorIndex < creditors.length && debtorIndex < debtors.length) {
+    const creditor = creditors[creditorIndex];
+    const debtor = debtors[debtorIndex];
+    const amount = roundCurrency(Math.min(creditor.net, debtor.net));
+
+    if (amount > 0.009) {
+      settlements.push({
+        fromMemberId: debtor.memberId,
+        toMemberId: creditor.memberId,
+        amount,
+      });
+    }
+
+    creditor.net = roundCurrency(creditor.net - amount);
+    debtor.net = roundCurrency(debtor.net - amount);
+
+    if (creditor.net <= 0.009) {
+      creditorIndex += 1;
+    }
+    if (debtor.net <= 0.009) {
+      debtorIndex += 1;
+    }
+  }
+
+  return {
+    totalExpenses: roundCurrency(totalExpenses),
+    balances: normalizedBalances,
+    settlements,
+  };
 }
 
 function getDateInputValue(value?: string) {
@@ -117,6 +290,65 @@ function memberName(member: GroupMember) {
   return member.name || member.email;
 }
 
+function memberInitial(member: GroupMember) {
+  const label = memberName(member).trim();
+  if (!label) {
+    return "U";
+  }
+
+  return label[0].toUpperCase();
+}
+
+function MemberIdentity({
+  member,
+  showEmail = false,
+}: {
+  member: GroupMember;
+  showEmail?: boolean;
+}) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="avatar">
+        <span className="w-6 rounded-full bg-base-200 text-[10px] font-medium text-base-content/70 flex items-center justify-center overflow-hidden">
+          {member.picture ? (
+            <img src={member.picture} alt={memberName(member)} />
+          ) : (
+            memberInitial(member)
+          )}
+        </span>
+      </span>
+      <span>
+        {memberName(member)}
+        {showEmail && member.email ? ` (${member.email})` : ""}
+      </span>
+    </span>
+  );
+}
+
+function getUserIdFromSub(sub?: string) {
+  if (!sub) {
+    return "";
+  }
+
+  return `user_${sub.replace(/:/g, "_")}`;
+}
+
+function summarizeTransaction(transaction: Transaction) {
+  return {
+    id: transaction.id,
+    batchId: transaction.batchId,
+    amount: transaction.amount,
+    name: transaction.name,
+    description: transaction.description,
+    transactionDate: transaction.transactionDate,
+    category: transaction.category,
+    paidById: transaction.paidById,
+    splitType: transaction.splitType,
+    splitMembers: transaction.splitData.includedMemberIds,
+    splitValueCount: Object.keys(transaction.splitData.values).length,
+  };
+}
+
 function App() {
   const { loginWithRedirect, logout, isAuthenticated, isLoading, user } =
     useAuth0();
@@ -163,10 +395,24 @@ function App() {
 
   const selectedGroup =
     groups.find((group) => group.id === selectedGroupId) ?? groups[0] ?? null;
+  const memberById = useMemo(
+    () =>
+      new Map(
+        (selectedGroup?.members || []).map((member) => [member.id, member]),
+      ),
+    [selectedGroup],
+  );
   const activeSplitTransaction =
     transactions.find(
       (transaction) => transaction.id === activeSplitTransactionId,
     ) || null;
+  const expenseSummary = useMemo(
+    () =>
+      selectedGroup
+        ? buildGroupExpenseSummary(selectedGroup.members, transactions)
+        : null,
+    [selectedGroup, transactions],
+  );
 
   const clearTransactionTimer = (transactionId: string) => {
     const timer = saveTimersRef.current[transactionId];
@@ -258,6 +504,9 @@ function App() {
   const fetchTransactions = async (group: Group) => {
     try {
       setLoadingData(true);
+      console.info("[transactions] fetch start", {
+        groupId: group.id,
+      });
       const data = await apiCall(
         `/api/spendings?batchId=${encodeURIComponent(group.id)}`,
       );
@@ -267,8 +516,16 @@ function App() {
         ),
       );
       setCategories((data.categories || []) as string[]);
+      console.info("[transactions] fetch success", {
+        groupId: group.id,
+        total: (data.spendings || []).length,
+        categories: (data.categories || []).length,
+      });
     } catch (error) {
-      console.error("Failed to fetch transactions:", error);
+      console.error("[transactions] fetch failed", {
+        groupId: group.id,
+        error,
+      });
     } finally {
       setLoadingData(false);
     }
@@ -338,6 +595,13 @@ function App() {
   }, [currentView, isAuthenticated]);
 
   useEffect(() => {
+    console.info("[transactions] selection effect", {
+      selectedGroupId,
+      selectedGroupResolvedId: selectedGroup?.id ?? null,
+      showGroupForm,
+      groupCount: groups.length,
+    });
+
     if (!selectedGroup || showGroupForm) {
       setTransactions([]);
       setCategories([]);
@@ -345,13 +609,17 @@ function App() {
     }
 
     fetchTransactions(selectedGroup);
-  }, [selectedGroupId, showGroupForm]);
+  }, [selectedGroup, showGroupForm, groups.length, selectedGroupId]);
 
   const persistTransaction = async (
     transaction: Transaction,
     mode: "patch" | "create" = "patch",
   ) => {
     setSavingTransactions((prev) => ({ ...prev, [transaction.id]: true }));
+    console.info("[transactions] persist start", {
+      mode,
+      transaction: summarizeTransaction(transaction),
+    });
 
     try {
       if (mode === "create") {
@@ -370,6 +638,12 @@ function App() {
           }),
         });
 
+        console.info("[transactions] create response", {
+          draftId: transaction.id,
+          createdId: response.spending?.id || response.id,
+          hasSpending: !!response.spending,
+        });
+
         if (response.spending && selectedGroup) {
           const normalized = normalizeTransaction(
             response.spending,
@@ -382,6 +656,9 @@ function App() {
           ) {
             setCategories((prev) => [...prev, normalized.category].sort());
           }
+          console.info("[transactions] create stored", {
+            transaction: summarizeTransaction(normalized),
+          });
         }
       } else {
         const response = await apiCall(`/api/spendings/${transaction.id}`, {
@@ -401,6 +678,11 @@ function App() {
 
         if (selectedGroup) {
           const normalized = normalizeTransaction(response, selectedGroup);
+          console.info("[transactions] patch response", {
+            requestedId: transaction.id,
+            returnedId: normalized.id,
+            transaction: summarizeTransaction(normalized),
+          });
           setTransactions((prev) =>
             prev.map((item) => (item.id === normalized.id ? normalized : item)),
           );
@@ -413,15 +695,31 @@ function App() {
         }
       }
     } catch (error) {
-      console.error("Failed to save transaction:", error);
+      console.error("[transactions] persist failed", {
+        mode,
+        transaction: summarizeTransaction(transaction),
+        error,
+      });
     } finally {
       setSavingTransactions((prev) => ({ ...prev, [transaction.id]: false }));
+      console.info("[transactions] persist end", {
+        mode,
+        transactionId: transaction.id,
+      });
     }
   };
 
   const scheduleTransactionSave = (transaction: Transaction) => {
     clearTransactionTimer(transaction.id);
+    console.info("[transactions] schedule save", {
+      transactionId: transaction.id,
+      delayMs: 350,
+      transaction: summarizeTransaction(transaction),
+    });
     saveTimersRef.current[transaction.id] = window.setTimeout(() => {
+      console.info("[transactions] debounce fired", {
+        transactionId: transaction.id,
+      });
       persistTransaction(transaction);
     }, 350);
   };
@@ -430,22 +728,33 @@ function App() {
     transactionId: string,
     updater: (transaction: Transaction) => Transaction,
   ) => {
-    let nextTransaction: Transaction | null = null;
-
-    setTransactions((prev) =>
-      prev.map((transaction) => {
-        if (transaction.id !== transactionId) {
-          return transaction;
-        }
-
-        nextTransaction = updater(transaction);
-        return nextTransaction;
-      }),
+    const current = transactions.find(
+      (transaction) => transaction.id === transactionId,
     );
 
-    if (nextTransaction) {
-      scheduleTransactionSave(nextTransaction);
+    if (!current) {
+      console.warn("[transactions] update skipped; transaction not found", {
+        transactionId,
+        knownTransactionIds: transactions.map((transaction) => transaction.id),
+      });
+      return;
     }
+
+    const nextTransaction = updater(current);
+
+    console.info("[transactions] local update", {
+      transactionId,
+      before: summarizeTransaction(current),
+      after: summarizeTransaction(nextTransaction),
+    });
+
+    setTransactions((prev) =>
+      prev.map((transaction) =>
+        transaction.id === transactionId ? nextTransaction : transaction,
+      ),
+    );
+
+    scheduleTransactionSave(nextTransaction);
   };
 
   const createTransaction = async () => {
@@ -455,7 +764,10 @@ function App() {
 
     const memberIds = selectedGroup.members.map((member) => member.id);
     const defaultDate = transactions[0]?.transactionDate || getDateInputValue();
-    const defaultPayer = memberIds[0] || "";
+    const currentUserId = getUserIdFromSub(user?.sub);
+    const defaultPayer = memberIds.includes(currentUserId)
+      ? currentUserId
+      : memberIds[0] || "";
     const transaction: Transaction = {
       id: `draft_${Date.now()}`,
       batchId: selectedGroup.id,
@@ -468,6 +780,11 @@ function App() {
       splitType: "equal",
       splitData: createDefaultSplitData(memberIds),
     };
+
+    console.info("[transactions] create draft", {
+      groupId: selectedGroup.id,
+      transaction: summarizeTransaction(transaction),
+    });
 
     await persistTransaction(transaction, "create");
   };
@@ -608,8 +925,8 @@ function App() {
 
   return (
     <div className="min-h-screen bg-base-200">
-      <header className="navbar bg-base-100 border-b border-base-300 px-4 md:px-6">
-        <div className="w-full max-w-6xl mx-auto flex justify-between gap-3">
+      <header className="navbar sticky top-0 z-30 bg-base-100 border-b border-base-300 px-4 md:px-6">
+        <div className="mx-auto flex w-full max-w-[110rem] justify-between gap-3">
           <button
             type="button"
             className="text-base md:text-lg font-semibold"
@@ -619,6 +936,18 @@ function App() {
           </button>
           {isAuthenticated ? (
             <div className="flex items-center gap-2">
+              {currentView === "dashboard" &&
+                !showGroupForm &&
+                selectedGroup && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={createTransaction}
+                  >
+                    Add expense
+                  </button>
+                )}
+
               <div
                 className={`dropdown dropdown-end ${groupMenuOpen ? "dropdown-open" : ""}`}
               >
@@ -742,7 +1071,7 @@ function App() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto w-full p-3 md:p-4">
+      <main className="mx-auto w-full max-w-[110rem] p-3 md:p-4">
         {isAuthenticated ? (
           <div className="flex flex-col gap-3">
             {showGroupForm ? (
@@ -810,10 +1139,7 @@ function App() {
                                 handleGroupMemberToggle(member.id)
                               }
                             />
-                            <span>
-                              {memberName(member)}
-                              {member.email ? ` (${member.email})` : ""}
-                            </span>
+                            <MemberIdentity member={member} showEmail />
                           </label>
                         ))}
                       </div>
@@ -852,230 +1178,345 @@ function App() {
               </section>
             ) : currentView === "dashboard" ? (
               <>
-                {selectedGroup && (
-                  <section className="card card-border bg-base-100 rounded-md w-full">
-                    <div className="card-body p-3 md:p-4 gap-3">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xl">
-                              {selectedGroup.emoji}
-                            </span>
-                            <h2 className="card-title text-base">
-                              {selectedGroup.name}
-                            </h2>
-                          </div>
-                          <p className="text-sm text-base-content/70">
-                            {selectedGroup.members.length} member(s)
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-primary"
-                          onClick={createTransaction}
-                        >
-                          New transaction
-                        </button>
-                      </div>
-                    </div>
-                  </section>
-                )}
-
                 {selectedGroup ? (
-                  <section className="card card-border bg-base-100 rounded-md w-full">
-                    <div className="card-body p-3 md:p-4 gap-3">
-                      <h2 className="card-title text-base">Transactions</h2>
-                      {loadingData ? (
-                        <div className="flex justify-center py-4">
-                          <span className="loading loading-spinner loading-md" />
-                        </div>
-                      ) : transactions.length > 0 ? (
-                        <div className="flex flex-col gap-3">
-                          {transactions.map((transaction) => (
-                            <div
-                              key={transaction.id}
-                              className="rounded-md border border-base-300 bg-base-100 p-3"
-                            >
-                              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                                <fieldset className="fieldset">
-                                  <legend className="fieldset-legend">
-                                    Amount
-                                  </legend>
-                                  <input
-                                    className="input input-sm w-full"
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    value={transaction.amount}
-                                    onChange={(e) =>
-                                      updateTransaction(
-                                        transaction.id,
-                                        (item) => ({
-                                          ...item,
-                                          amount: Number(e.target.value || 0),
-                                        }),
-                                      )
-                                    }
-                                  />
-                                </fieldset>
+                  <>
+                    {expenseSummary && (
+                      <section className="card card-border rounded-md bg-base-100 w-full">
+                        <div className="card-body gap-3 p-3 md:p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h2 className="card-title text-base">
+                              Group summary
+                            </h2>
+                            <span className="badge badge-soft badge-primary">
+                              Total expenses:{" "}
+                              {currencyLabel(expenseSummary.totalExpenses)}
+                            </span>
+                          </div>
 
-                                <fieldset className="fieldset">
-                                  <legend className="fieldset-legend">
-                                    Name
-                                  </legend>
-                                  <input
-                                    className="input input-sm w-full"
-                                    value={transaction.name}
-                                    onChange={(e) =>
-                                      updateTransaction(
-                                        transaction.id,
-                                        (item) => ({
-                                          ...item,
-                                          name: e.target.value,
-                                        }),
-                                      )
-                                    }
-                                    placeholder="Dinner"
-                                  />
-                                </fieldset>
+                          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                            {selectedGroup.members.map((member) => {
+                              const balance = expenseSummary.balances.find(
+                                (item) => item.memberId === member.id,
+                              );
+                              const net = balance?.net ?? 0;
+                              const tone =
+                                net > 0.009
+                                  ? "text-success"
+                                  : net < -0.009
+                                    ? "text-warning"
+                                    : "text-base-content/70";
 
-                                <fieldset className="fieldset">
-                                  <legend className="fieldset-legend">
-                                    Description
-                                  </legend>
-                                  <input
-                                    className="input input-sm w-full"
-                                    value={transaction.description}
-                                    onChange={(e) =>
-                                      updateTransaction(
-                                        transaction.id,
-                                        (item) => ({
-                                          ...item,
-                                          description: e.target.value,
-                                        }),
-                                      )
-                                    }
-                                    placeholder="Optional"
-                                  />
-                                </fieldset>
-
-                                <fieldset className="fieldset">
-                                  <legend className="fieldset-legend">
-                                    Transaction date
-                                  </legend>
-                                  <input
-                                    className="input input-sm w-full"
-                                    type="date"
-                                    value={transaction.transactionDate}
-                                    onChange={(e) =>
-                                      updateTransaction(
-                                        transaction.id,
-                                        (item) => ({
-                                          ...item,
-                                          transactionDate: e.target.value,
-                                        }),
-                                      )
-                                    }
-                                  />
-                                </fieldset>
-
-                                <fieldset className="fieldset">
-                                  <legend className="fieldset-legend">
-                                    Category
-                                  </legend>
-                                  <input
-                                    className="input input-sm w-full"
-                                    list="category-options"
-                                    value={transaction.category}
-                                    onChange={(e) =>
-                                      updateTransaction(
-                                        transaction.id,
-                                        (item) => ({
-                                          ...item,
-                                          category: e.target.value,
-                                        }),
-                                      )
-                                    }
-                                    placeholder="Food"
-                                  />
-                                </fieldset>
-
-                                <fieldset className="fieldset">
-                                  <legend className="fieldset-legend">
-                                    Split
-                                  </legend>
-                                  <button
-                                    type="button"
-                                    className="btn btn-sm justify-start"
-                                    onClick={() =>
-                                      openAdvancedSplit(transaction)
-                                    }
-                                  >
-                                    {splitLabel(
-                                      transaction,
-                                      selectedGroup.members,
-                                    )}
-                                  </button>
-                                </fieldset>
-
-                                <fieldset className="fieldset">
-                                  <legend className="fieldset-legend">
-                                    Paid by
-                                  </legend>
-                                  <select
-                                    className="select select-sm w-full"
-                                    value={transaction.paidById}
-                                    onChange={(e) =>
-                                      updateTransaction(
-                                        transaction.id,
-                                        (item) => ({
-                                          ...item,
-                                          paidById: e.target.value,
-                                        }),
-                                      )
-                                    }
-                                  >
-                                    {selectedGroup.members.map((member) => (
-                                      <option key={member.id} value={member.id}>
-                                        {memberName(member)}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </fieldset>
-
-                                <fieldset className="fieldset">
-                                  <legend className="fieldset-legend">
-                                    Advanced
-                                  </legend>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm"
-                                      onClick={() =>
-                                        openAdvancedSplit(transaction)
-                                      }
+                              return (
+                                <div
+                                  key={member.id}
+                                  className="rounded-md border border-base-300 p-2"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <MemberIdentity member={member} />
+                                    <span
+                                      className={`${tone} text-sm font-medium`}
                                     >
-                                      Advanced
-                                    </button>
-                                    {savingTransactions[transaction.id] && (
-                                      <span className="loading loading-spinner loading-xs" />
-                                    )}
+                                      {net > 0.009
+                                        ? `is owed ${currencyLabel(net)}`
+                                        : net < -0.009
+                                          ? `owes ${currencyLabel(Math.abs(net))}`
+                                          : "settled"}
+                                    </span>
                                   </div>
-                                </fieldset>
-                              </div>
+                                  <div className="mt-1 text-xs text-base-content/70">
+                                    Spent: {currencyLabel(balance?.paid ?? 0)}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <div className="rounded-md border border-base-300 p-3">
+                            <h3 className="text-sm font-semibold">
+                              Optimized reimbursements
+                            </h3>
+                            <p className="text-xs text-base-content/70 mt-1">
+                              {selectedGroup.members.length > 2
+                                ? "Reimbursements are minimized to reduce the number of payments."
+                                : "Reimbursement suggestion based on current balances."}
+                            </p>
+                            <div className="mt-2 flex flex-col gap-2">
+                              {expenseSummary.settlements.length > 0 ? (
+                                expenseSummary.settlements.map(
+                                  (step, index) => {
+                                    const from = memberById.get(
+                                      step.fromMemberId,
+                                    );
+                                    const to = memberById.get(step.toMemberId);
+
+                                    return (
+                                      <div
+                                        key={`${step.fromMemberId}-${step.toMemberId}-${index}`}
+                                        className="flex flex-wrap items-center gap-2 text-sm"
+                                      >
+                                        {from ? (
+                                          <MemberIdentity member={from} />
+                                        ) : (
+                                          <span>Unknown</span>
+                                        )}
+                                        <span className="text-base-content/70">
+                                          pays
+                                        </span>
+                                        <span className="font-semibold">
+                                          {currencyLabel(step.amount)}
+                                        </span>
+                                        <span className="text-base-content/70">
+                                          to
+                                        </span>
+                                        {to ? (
+                                          <MemberIdentity member={to} />
+                                        ) : (
+                                          <span>Unknown</span>
+                                        )}
+                                      </div>
+                                    );
+                                  },
+                                )
+                              ) : (
+                                <p className="text-sm text-base-content/70">
+                                  Everyone is settled. No reimbursements needed.
+                                </p>
+                              )}
                             </div>
-                          ))}
+                          </div>
                         </div>
-                      ) : (
-                        <div className="alert alert-soft">
-                          <span>
-                            No transactions yet. Create one to start tracking
-                            this group.
+                      </section>
+                    )}
+
+                    <section className="card card-border rounded-md bg-base-100 min-w-0">
+                      <div className="card-body gap-3 p-3 md:p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <h2 className="card-title text-base">
+                              Transactions
+                            </h2>
+                            <p className="text-sm text-base-content/70">
+                              All spendings for this group in one editable
+                              table.
+                            </p>
+                          </div>
+                          <span className="badge badge-soft badge-neutral">
+                            {transactions.length} total
                           </span>
                         </div>
-                      )}
-                    </div>
-                  </section>
+
+                        {loadingData ? (
+                          <div className="flex justify-center py-4">
+                            <span className="loading loading-spinner loading-md" />
+                          </div>
+                        ) : transactions.length > 0 ? (
+                          <div className="overflow-x-auto rounded-md border border-base-300">
+                            <table className="table table-zebra [&_td]:px-2 [&_td]:py-2 [&_th]:px-2 [&_th]:py-2">
+                              <thead>
+                                <tr>
+                                  <th className="min-w-56">Name</th>
+                                  <th className="min-w-24">Amount</th>
+                                  <th className="min-w-32">Split</th>
+                                  <th className="min-w-44">Paid by</th>
+                                  <th className="min-w-36">Date</th>
+                                  <th className="min-w-40">Category</th>
+                                  <th className="min-w-72">Description</th>
+                                  <th className="w-24">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {transactions.map((transaction) => {
+                                  const paidByMember =
+                                    selectedGroup.members.find(
+                                      (member) =>
+                                        member.id === transaction.paidById,
+                                    );
+
+                                  return (
+                                    <tr key={transaction.id}>
+                                      <td>
+                                        <input
+                                          className="input input-sm w-full min-w-56"
+                                          value={transaction.name}
+                                          onChange={(e) =>
+                                            updateTransaction(
+                                              transaction.id,
+                                              (item) => ({
+                                                ...item,
+                                                name: e.target.value,
+                                              }),
+                                            )
+                                          }
+                                          placeholder="Dinner"
+                                        />
+                                      </td>
+                                      <td>
+                                        <input
+                                          className="input input-sm w-full min-w-24"
+                                          type="number"
+                                          step="0.01"
+                                          min="0"
+                                          value={
+                                            transaction.amount === 0
+                                              ? ""
+                                              : transaction.amount
+                                          }
+                                          placeholder="0.00"
+                                          onChange={(e) =>
+                                            updateTransaction(
+                                              transaction.id,
+                                              (item) => ({
+                                                ...item,
+                                                amount: Number(
+                                                  e.target.value || 0,
+                                                ),
+                                              }),
+                                            )
+                                          }
+                                        />
+                                      </td>
+                                      <td>
+                                        <button
+                                          type="button"
+                                          className="btn btn-xs w-full min-w-32 justify-start"
+                                          onClick={() =>
+                                            openAdvancedSplit(transaction)
+                                          }
+                                        >
+                                          {splitLabel(
+                                            transaction,
+                                            selectedGroup.members,
+                                          )}
+                                        </button>
+                                      </td>
+                                      <td>
+                                        <details className="dropdown w-full min-w-44">
+                                          <summary className="btn btn-sm w-full justify-start normal-case">
+                                            {paidByMember ? (
+                                              <MemberIdentity
+                                                member={paidByMember}
+                                              />
+                                            ) : (
+                                              <span className="text-xs text-base-content/60">
+                                                Unknown payer
+                                              </span>
+                                            )}
+                                          </summary>
+                                          <ul className="menu dropdown-content z-20 mt-1 w-60 rounded-box border border-base-300 bg-base-100 p-2 shadow-sm">
+                                            {selectedGroup.members.map(
+                                              (member) => (
+                                                <li key={member.id}>
+                                                  <button
+                                                    type="button"
+                                                    className={
+                                                      transaction.paidById ===
+                                                      member.id
+                                                        ? "menu-active"
+                                                        : ""
+                                                    }
+                                                    onClick={(event) => {
+                                                      updateTransaction(
+                                                        transaction.id,
+                                                        (item) => ({
+                                                          ...item,
+                                                          paidById: member.id,
+                                                        }),
+                                                      );
+
+                                                      const dropdown =
+                                                        event.currentTarget.closest(
+                                                          "details",
+                                                        ) as HTMLDetailsElement | null;
+                                                      dropdown?.removeAttribute(
+                                                        "open",
+                                                      );
+                                                    }}
+                                                  >
+                                                    <MemberIdentity
+                                                      member={member}
+                                                    />
+                                                  </button>
+                                                </li>
+                                              ),
+                                            )}
+                                          </ul>
+                                        </details>
+                                      </td>
+                                      <td>
+                                        <input
+                                          className="input input-sm w-full min-w-36"
+                                          type="date"
+                                          value={transaction.transactionDate}
+                                          onChange={(e) =>
+                                            updateTransaction(
+                                              transaction.id,
+                                              (item) => ({
+                                                ...item,
+                                                transactionDate: e.target.value,
+                                              }),
+                                            )
+                                          }
+                                        />
+                                      </td>
+                                      <td>
+                                        <input
+                                          className="input input-sm w-full min-w-40"
+                                          list="category-options"
+                                          value={transaction.category}
+                                          onChange={(e) =>
+                                            updateTransaction(
+                                              transaction.id,
+                                              (item) => ({
+                                                ...item,
+                                                category: e.target.value,
+                                              }),
+                                            )
+                                          }
+                                          placeholder="Food"
+                                        />
+                                      </td>
+                                      <td>
+                                        <input
+                                          className="input input-sm w-full min-w-72"
+                                          value={transaction.description}
+                                          onChange={(e) =>
+                                            updateTransaction(
+                                              transaction.id,
+                                              (item) => ({
+                                                ...item,
+                                                description: e.target.value,
+                                              }),
+                                            )
+                                          }
+                                          placeholder="Optional"
+                                        />
+                                      </td>
+                                      <td>
+                                        {savingTransactions[transaction.id] ? (
+                                          <span className="loading loading-spinner loading-xs" />
+                                        ) : (
+                                          <span className="badge badge-soft badge-success badge-sm">
+                                            Saved
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="alert alert-soft">
+                            <span>
+                              No transactions yet. Use Add expense to create the
+                              first row for this group.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                  </>
                 ) : (
                   <div className="alert alert-soft">
                     <span>
@@ -1271,7 +1712,7 @@ function App() {
                         )}
                         onChange={() => handleSplitMemberToggle(member.id)}
                       />
-                      <span>{memberName(member)}</span>
+                      <MemberIdentity member={member} />
                     </label>
                   ))}
                 </div>
@@ -1296,8 +1737,8 @@ function App() {
                           key={member.id}
                           className="flex items-center gap-3"
                         >
-                          <span className="min-w-32 text-sm">
-                            {memberName(member)}
+                          <span className="min-w-48 text-sm">
+                            <MemberIdentity member={member} />
                           </span>
                           <input
                             className="input input-sm w-full"

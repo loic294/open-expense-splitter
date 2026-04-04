@@ -94,6 +94,76 @@ function serializeSplitData(value: unknown) {
   return JSON.stringify(value ?? null);
 }
 
+function getRequestId(c: {
+  req: { header: (name: string) => string | undefined };
+  res: { headers: Headers };
+}) {
+  return (
+    c.res.headers.get("X-Request-ID") ||
+    c.req.header("x-request-id") ||
+    "unknown-request"
+  );
+}
+
+function summarizeSpendingPayload(body: {
+  batchId?: string;
+  amount?: number;
+  name?: string;
+  description?: string;
+  transactionDate?: string;
+  category?: string;
+  paidById?: string;
+  splitType?: string;
+  splitData?: unknown;
+}) {
+  const splitData =
+    body.splitData && typeof body.splitData === "object"
+      ? (body.splitData as {
+          includedMemberIds?: unknown;
+          values?: unknown;
+        })
+      : null;
+
+  return {
+    batchId: body.batchId,
+    amount: body.amount,
+    name: body.name,
+    description: body.description,
+    transactionDate: body.transactionDate,
+    category: body.category,
+    paidById: body.paidById,
+    splitType: body.splitType,
+    splitMembers: Array.isArray(splitData?.includedMemberIds)
+      ? splitData.includedMemberIds
+      : [],
+    splitValueCount:
+      splitData?.values && typeof splitData.values === "object"
+        ? Object.keys(splitData.values as Record<string, unknown>).length
+        : 0,
+  };
+}
+
+function summarizeSpendingRecord(spending: any) {
+  if (!spending) {
+    return null;
+  }
+
+  return {
+    id: spending.id,
+    batchId: spending.batch_id,
+    amount: spending.amount,
+    name: spending.name,
+    details: spending.details,
+    transactionDate: spending.transaction_date,
+    category: spending.category,
+    paidById: spending.paid_by_id,
+    splitType: spending.split_type,
+    splitMembers: Array.isArray(spending.split_data?.includedMemberIds)
+      ? spending.split_data.includedMemberIds
+      : [],
+  };
+}
+
 function getSpendingsForBatch(batchId: string) {
   const spendings = db
     .prepare(
@@ -128,7 +198,8 @@ function getSpendingsForBatch(batchId: string) {
 // Request/response logs help quickly pinpoint auth and route failures.
 app.use("*", async (c, next) => {
   const start = Date.now();
-  const requestId = randomUUID();
+  const requestId = c.req.header("x-request-id") || randomUUID();
+  c.header("X-Request-ID", requestId);
   console.debug("[api:%s] -> %s %s", requestId, c.req.method, c.req.path);
   await next();
   console.debug(
@@ -147,7 +218,7 @@ app.use(
   cors({
     origin: ["http://localhost:5173", "http://localhost:3000"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: ["Content-Type", "Authorization", "X-Request-ID"],
     credentials: true,
   }),
 );
@@ -332,16 +403,27 @@ app.patch("/api/me", async (c) => {
 // Get group's spendings
 app.get("/api/spendings", (c) => {
   try {
+    const requestId = getRequestId(c);
     const auth = requireAuth(c);
 
     const userId = getUserIdFromSub(auth.sub);
     const batchId = c.req.query("batchId");
 
+    console.debug("[api:%s] spendings.get request", requestId, {
+      userId,
+      batchId,
+    });
+
     if (!batchId) {
+      console.warn("[api:%s] spendings.get missing batchId", requestId);
       return c.json({ error: "batchId is required" }, 400);
     }
 
     if (!canAccessBatch(userId, batchId)) {
+      console.warn("[api:%s] spendings.get forbidden", requestId, {
+        userId,
+        batchId,
+      });
       return c.json({ error: "Forbidden" }, 403);
     }
 
@@ -358,6 +440,12 @@ app.get("/api/spendings", (c) => {
       )
       .all(batchId)
       .map((row: any) => row.category) as string[];
+
+    console.debug("[api:%s] spendings.get success", requestId, {
+      batchId,
+      total: spendings.length,
+      categories: categories.length,
+    });
 
     return c.json({ spendings, categories, total: spendings.length });
   } catch (error) {
@@ -376,6 +464,7 @@ app.get("/api/spendings", (c) => {
 // Create spending record
 app.post("/api/spendings", async (c) => {
   try {
+    const requestId = getRequestId(c);
     const auth = requireAuth(c);
     const body = (await c.req.json()) as {
       batchId?: string;
@@ -392,11 +481,22 @@ app.post("/api/spendings", async (c) => {
     const userId = getUserIdFromSub(auth.sub);
     const id = `spending_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+    console.debug("[api:%s] spendings.create request", requestId, {
+      userId,
+      generatedId: id,
+      body: summarizeSpendingPayload(body),
+    });
+
     if (!body.batchId) {
+      console.warn("[api:%s] spendings.create missing batchId", requestId);
       return c.json({ error: "batchId is required" }, 400);
     }
 
     if (!canAccessBatch(userId, body.batchId)) {
+      console.warn("[api:%s] spendings.create forbidden", requestId, {
+        userId,
+        batchId: body.batchId,
+      });
       return c.json({ error: "Forbidden" }, 403);
     }
 
@@ -409,6 +509,16 @@ app.post("/api/spendings", async (c) => {
     const transactionName = (body.name || "").trim() || "New transaction";
     const details = (body.description || "").trim();
     const transactionDate = body.transactionDate || new Date().toISOString();
+
+    console.debug("[api:%s] spendings.create normalized", requestId, {
+      userId,
+      batchId: body.batchId,
+      paidById,
+      transactionName,
+      details,
+      transactionDate,
+      splitType: body.splitType || "equal",
+    });
 
     const stmt = db.prepare(`
       INSERT INTO spendings (
@@ -428,7 +538,7 @@ app.post("/api/spendings", async (c) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    stmt.run(
+    const result = stmt.run(
       id,
       userId,
       body.batchId,
@@ -446,6 +556,12 @@ app.post("/api/spendings", async (c) => {
     const created = getSpendingsForBatch(body.batchId).find(
       (spending) => spending.id === id,
     );
+
+    console.debug("[api:%s] spendings.create stored", requestId, {
+      changes: result.changes,
+      lastInsertRowid: result.lastInsertRowid,
+      created: summarizeSpendingRecord(created),
+    });
 
     return c.json({ id, message: "Spending recorded", spending: created }, 201);
   } catch (error) {
@@ -473,6 +589,7 @@ app.post("/api/spendings", async (c) => {
 
 app.patch("/api/spendings/:id", async (c) => {
   try {
+    const requestId = getRequestId(c);
     const auth = requireAuth(c);
     const userId = getUserIdFromSub(auth.sub);
     const spendingId = c.req.param("id");
@@ -488,6 +605,12 @@ app.patch("/api/spendings/:id", async (c) => {
       splitData?: unknown;
     };
 
+    console.debug("[api:%s] spendings.patch request", requestId, {
+      userId,
+      spendingId,
+      body: summarizeSpendingPayload(body),
+    });
+
     const existing = db
       .prepare(
         `
@@ -498,16 +621,32 @@ app.patch("/api/spendings/:id", async (c) => {
       )
       .get(spendingId) as { id: string; batch_id: string | null } | undefined;
 
+    console.debug("[api:%s] spendings.patch existing", requestId, {
+      spendingId,
+      existing,
+    });
+
     if (!existing) {
+      console.warn("[api:%s] spendings.patch not found", requestId, {
+        spendingId,
+      });
       return c.json({ error: "Transaction not found" }, 404);
     }
 
     const batchId = body.batchId || existing.batch_id;
     if (!batchId) {
+      console.warn("[api:%s] spendings.patch missing batchId", requestId, {
+        spendingId,
+      });
       return c.json({ error: "batchId is required" }, 400);
     }
 
     if (!canAccessBatch(userId, batchId)) {
+      console.warn("[api:%s] spendings.patch forbidden", requestId, {
+        userId,
+        spendingId,
+        batchId,
+      });
       return c.json({ error: "Forbidden" }, 403);
     }
 
@@ -519,6 +658,16 @@ app.patch("/api/spendings/:id", async (c) => {
 
     const transactionName = (body.name || "").trim() || "New transaction";
     const details = (body.description || "").trim();
+
+    console.debug("[api:%s] spendings.patch normalized", requestId, {
+      spendingId,
+      batchId,
+      paidById,
+      transactionName,
+      details,
+      transactionDate: body.transactionDate || new Date().toISOString(),
+      splitType: body.splitType || "equal",
+    });
 
     const stmt = db.prepare(`
       UPDATE spendings
@@ -535,7 +684,7 @@ app.patch("/api/spendings/:id", async (c) => {
       WHERE id = ?
     `);
 
-    stmt.run(
+    const result = stmt.run(
       batchId,
       transactionName,
       details || null,
@@ -552,6 +701,11 @@ app.patch("/api/spendings/:id", async (c) => {
     const updated = getSpendingsForBatch(batchId).find(
       (spending) => spending.id === spendingId,
     );
+
+    console.debug("[api:%s] spendings.patch stored", requestId, {
+      changes: result.changes,
+      updated: summarizeSpendingRecord(updated),
+    });
 
     return c.json(updated);
   } catch (error) {
