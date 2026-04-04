@@ -7,6 +7,9 @@ services:
       - "5173:5173"
     environment:
       - VITE_API_URL=http://localhost:3000
+      - VITE_AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - VITE_AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+      - TAILWIND_DISABLE_OXIDE=1
     volumes:
       - ./client/src:/app/src
     depends_on:
@@ -22,10 +25,13 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+      - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
     volumes:
       - ./server/src:/app/src
+      - db_data:/app/data
     command: npm run dev
 
 volumes:
-  node_modules_client:
-  node_modules_server:
+  db_data:
