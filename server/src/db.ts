@@ -55,12 +55,19 @@ export function initializeDB() {
       id TEXT PRIMARY KEY,
       owner_id TEXT NOT NULL,
       name TEXT NOT NULL,
+      emoji TEXT DEFAULT '💸',
       description TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+  try {
+    db.exec("ALTER TABLE batches ADD COLUMN emoji TEXT DEFAULT '💸'");
+  } catch {
+    // Column already exists on subsequent runs.
+  }
 
   // Batch members - who participates in each batch
   db.exec(`

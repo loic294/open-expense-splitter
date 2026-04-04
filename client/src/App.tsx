@@ -10,6 +10,30 @@ interface ProfileForm {
   picture: string;
 }
 
+interface GroupMember {
+  id: string;
+  email: string;
+  name: string | null;
+  picture: string | null;
+}
+
+interface Group {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string | null;
+  owner_id: string;
+  members: GroupMember[];
+  canEdit: boolean;
+}
+
+interface GroupForm {
+  id?: string;
+  name: string;
+  emoji: string;
+  memberIds: string[];
+}
+
 function App() {
   const { loginWithRedirect, logout, isAuthenticated, isLoading, user } =
     useAuth0();
@@ -27,7 +51,24 @@ function App() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<GroupMember[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [showGroupForm, setShowGroupForm] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [groupForm, setGroupForm] = useState<GroupForm>({
+    name: "",
+    emoji: "💸",
+    memberIds: [],
+  });
+  const [savingGroup, setSavingGroup] = useState(false);
+  const [groupMessage, setGroupMessage] = useState<string | null>(null);
   const apiCall = useApiCall();
+
+  const selectedGroup =
+    groups.find((group) => group.id === selectedGroupId) ?? groups[0] ?? null;
 
   const handleProfileImageUpload = (file?: File) => {
     if (!file) return;
@@ -68,6 +109,70 @@ function App() {
     }
   };
 
+  const fetchGroups = async () => {
+    try {
+      setLoadingGroups(true);
+      const [groupData, userData] = await Promise.all([
+        apiCall("/api/batches"),
+        apiCall("/api/users"),
+      ]);
+      const nextGroups = (groupData.batches || []) as Group[];
+      const nextUsers = (userData.users || []) as GroupMember[];
+      setGroups(nextGroups);
+      setAvailableUsers(nextUsers);
+
+      const hasSelectedGroup = nextGroups.some(
+        (group) => group.id === selectedGroupId,
+      );
+      const nextSelectedGroupId = hasSelectedGroup
+        ? selectedGroupId
+        : nextGroups[0]?.id || null;
+
+      setSelectedGroupId(nextSelectedGroupId);
+
+      if (nextGroups.length === 0) {
+        setCurrentView("dashboard");
+        setShowGroupForm(true);
+        setEditingGroupId(null);
+        setGroupForm({ name: "", emoji: "💸", memberIds: [] });
+      }
+    } catch (error) {
+      console.error("Failed to fetch groups:", error);
+    } finally {
+      setLoadingGroups(false);
+    }
+  };
+
+  const openCreateGroupForm = () => {
+    setGroupMessage(null);
+    setEditingGroupId(null);
+    setGroupForm({ name: "", emoji: "💸", memberIds: [] });
+    setShowGroupForm(true);
+    setGroupMenuOpen(false);
+  };
+
+  const openEditGroupForm = (group: Group) => {
+    setGroupMessage(null);
+    setEditingGroupId(group.id);
+    setGroupForm({
+      id: group.id,
+      name: group.name,
+      emoji: group.emoji || "💸",
+      memberIds: group.members.map((member) => member.id),
+    });
+    setShowGroupForm(true);
+    setGroupMenuOpen(false);
+  };
+
+  const handleGroupMemberToggle = (memberId: string) => {
+    setGroupForm((prev) => ({
+      ...prev,
+      memberIds: prev.memberIds.includes(memberId)
+        ? prev.memberIds.filter((id) => id !== memberId)
+        : [...prev.memberIds, memberId],
+    }));
+  };
+
   // Fetch spendings when authenticated
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -84,6 +189,7 @@ function App() {
         ]);
         setSpendings(spendingData.spendings || []);
         applyProfile(profileData);
+        await fetchGroups();
       } catch (error) {
         console.error("Failed to fetch spendings:", error);
       } finally {
@@ -98,6 +204,18 @@ function App() {
     if (!isAuthenticated || currentView !== "profile") return;
     fetchProfile();
   }, [currentView, isAuthenticated]);
+
+  useEffect(() => {
+    if (!selectedGroupId) return;
+    window.localStorage.setItem("selectedGroupId", selectedGroupId);
+  }, [selectedGroupId]);
+
+  useEffect(() => {
+    const storedGroupId = window.localStorage.getItem("selectedGroupId");
+    if (storedGroupId) {
+      setSelectedGroupId(storedGroupId);
+    }
+  }, []);
 
   const handleAddSpending = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,6 +261,48 @@ function App() {
     }
   };
 
+  const handleSaveGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGroupMessage(null);
+
+    try {
+      setSavingGroup(true);
+      const endpoint = editingGroupId
+        ? `/api/batches/${editingGroupId}`
+        : "/api/batches";
+      const method = editingGroupId ? "PATCH" : "POST";
+      const payload = {
+        name: groupForm.name,
+        emoji: groupForm.emoji,
+        memberIds: groupForm.memberIds,
+      };
+
+      const response = await apiCall(endpoint, {
+        method,
+        body: JSON.stringify(payload),
+      });
+
+      setGroupMessage(editingGroupId ? "Group updated" : "Group created");
+      setShowGroupForm(false);
+      await fetchGroups();
+
+      const newGroupId = editingGroupId
+        ? response.id || editingGroupId
+        : response.batch?.id || response.id;
+
+      if (newGroupId) {
+        setSelectedGroupId(newGroupId);
+      }
+    } catch (error) {
+      console.error("Failed to save group:", error);
+      setGroupMessage(
+        error instanceof Error ? error.message : "Failed to save group",
+      );
+    } finally {
+      setSavingGroup(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-base-200">
@@ -164,6 +324,62 @@ function App() {
           </button>
           {isAuthenticated ? (
             <div className="flex items-center gap-2">
+              <div
+                className={`dropdown dropdown-end ${groupMenuOpen ? "dropdown-open" : ""}`}
+              >
+                <button
+                  type="button"
+                  className="btn btn-sm gap-2"
+                  onClick={() => setGroupMenuOpen((open) => !open)}
+                >
+                  <span>{selectedGroup?.emoji || "💸"}</span>
+                  <span className="max-w-36 truncate">
+                    {loadingGroups
+                      ? "Loading groups..."
+                      : selectedGroup?.name || "Create your first group"}
+                  </span>
+                </button>
+                <ul className="menu dropdown-content z-10 mt-2 w-64 rounded-box border border-base-300 bg-base-100 p-2 shadow-sm">
+                  {groups.length > 0 ? (
+                    groups.map((group) => (
+                      <li key={group.id}>
+                        <button
+                          type="button"
+                          className={
+                            selectedGroupId === group.id ? "menu-active" : ""
+                          }
+                          onClick={() => {
+                            setSelectedGroupId(group.id);
+                            setGroupMenuOpen(false);
+                          }}
+                        >
+                          <span>{group.emoji}</span>
+                          <span>{group.name}</span>
+                        </button>
+                      </li>
+                    ))
+                  ) : (
+                    <li className="menu-title">
+                      <span>No groups yet</span>
+                    </li>
+                  )}
+                  <li>
+                    <button type="button" onClick={openCreateGroupForm}>
+                      Create new group
+                    </button>
+                  </li>
+                  {selectedGroup?.canEdit && (
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => openEditGroupForm(selectedGroup)}
+                      >
+                        Edit current group
+                      </button>
+                    </li>
+                  )}
+                </ul>
+              </div>
               <div
                 className={`dropdown dropdown-end ${profileMenuOpen ? "dropdown-open" : ""}`}
               >
@@ -233,8 +449,128 @@ function App() {
       <main className="max-w-5xl mx-auto w-full p-3 md:p-4">
         {isAuthenticated ? (
           <div className="flex flex-col gap-3">
-            {currentView === "dashboard" ? (
+            {showGroupForm ? (
+              <section className="card card-border bg-base-100 rounded-md w-full">
+                <div className="card-body p-3 md:p-4 gap-3">
+                  <h2 className="card-title text-base">
+                    {editingGroupId ? "Update group" : "Create a new group"}
+                  </h2>
+                  <p className="text-sm text-base-content/70">
+                    {groups.length === 0
+                      ? "Before tracking expenses, create your first group and choose who belongs to it."
+                      : "Set the group name, emoji, and members."}
+                  </p>
+
+                  <form
+                    onSubmit={handleSaveGroup}
+                    className="flex flex-col gap-3"
+                  >
+                    <fieldset className="fieldset">
+                      <legend className="fieldset-legend">Group name</legend>
+                      <input
+                        className="input input-sm w-full"
+                        value={groupForm.name}
+                        onChange={(e) =>
+                          setGroupForm((prev) => ({
+                            ...prev,
+                            name: e.target.value,
+                          }))
+                        }
+                        placeholder="Weekend trip"
+                        required
+                      />
+                    </fieldset>
+
+                    <fieldset className="fieldset">
+                      <legend className="fieldset-legend">Emoji</legend>
+                      <input
+                        className="input input-sm w-full"
+                        value={groupForm.emoji}
+                        onChange={(e) =>
+                          setGroupForm((prev) => ({
+                            ...prev,
+                            emoji: e.target.value,
+                          }))
+                        }
+                        placeholder="🏖️"
+                        maxLength={4}
+                        required
+                      />
+                    </fieldset>
+
+                    <fieldset className="fieldset">
+                      <legend className="fieldset-legend">Members</legend>
+                      <div className="flex flex-col gap-2 rounded-md border border-base-300 p-3">
+                        {availableUsers.map((member) => (
+                          <label
+                            key={member.id}
+                            className="label cursor-pointer justify-start gap-3"
+                          >
+                            <input
+                              type="checkbox"
+                              className="checkbox checkbox-sm"
+                              checked={groupForm.memberIds.includes(member.id)}
+                              onChange={() =>
+                                handleGroupMemberToggle(member.id)
+                              }
+                            />
+                            <span>
+                              {member.name || member.email}
+                              {member.email ? ` (${member.email})` : ""}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+
+                    <div className="flex items-center gap-2">
+                      <button type="submit" className="btn btn-sm btn-primary">
+                        {savingGroup
+                          ? "Saving..."
+                          : editingGroupId
+                            ? "Update group"
+                            : "Create group"}
+                      </button>
+                      {groups.length > 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() => {
+                            setShowGroupForm(false);
+                            setEditingGroupId(null);
+                            setGroupMessage(null);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </form>
+
+                  {groupMessage && (
+                    <div className="alert alert-soft">
+                      <span>{groupMessage}</span>
+                    </div>
+                  )}
+                </div>
+              </section>
+            ) : currentView === "dashboard" ? (
               <>
+                {selectedGroup && (
+                  <section className="card card-border bg-base-100 rounded-md w-full">
+                    <div className="card-body p-3 md:p-4 gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{selectedGroup.emoji}</span>
+                        <h2 className="card-title text-base">
+                          {selectedGroup.name}
+                        </h2>
+                      </div>
+                      <p className="text-sm text-base-content/70">
+                        {selectedGroup.members.length} member(s) in this group.
+                      </p>
+                    </div>
+                  </section>
+                )}
                 <section className="card card-border bg-base-100 rounded-md w-full">
                   <div className="card-body p-3 md:p-4 gap-3">
                     <h2 className="card-title text-base">Add Spending</h2>

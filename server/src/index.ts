@@ -14,6 +14,50 @@ function isUnauthorizedError(error: unknown): boolean {
   return error instanceof Error && error.message === "Unauthorized";
 }
 
+function getUserIdFromSub(sub: string): string {
+  return `user_${sub.replace(/:/g, "_")}`;
+}
+
+function normalizeMemberIds(ownerId: string, memberIds: unknown): string[] {
+  const ids = Array.isArray(memberIds)
+    ? memberIds.filter((value): value is string => typeof value === "string")
+    : [];
+
+  return Array.from(new Set([ownerId, ...ids]));
+}
+
+function getBatchMembers(batchId: string) {
+  return db
+    .prepare(
+      `
+      SELECT u.id, u.email, u.name, u.picture, bm.created_at
+      FROM batch_members bm
+      JOIN users u ON u.id = bm.user_id
+      WHERE bm.batch_id = ?
+      ORDER BY COALESCE(u.name, u.email) ASC
+    `,
+    )
+    .all(batchId) as any[];
+}
+
+function syncBatchMembers(batchId: string, memberIds: string[]) {
+  const deleteStmt = db.prepare(`DELETE FROM batch_members WHERE batch_id = ?`);
+  const insertStmt = db.prepare(`
+    INSERT INTO batch_members (id, batch_id, user_id)
+    VALUES (?, ?, ?)
+  `);
+
+  const transaction = db.transaction((ids: string[]) => {
+    deleteStmt.run(batchId);
+
+    ids.forEach((memberId) => {
+      insertStmt.run(`member_${randomUUID()}`, batchId, memberId);
+    });
+  });
+
+  transaction(memberIds);
+}
+
 // Request/response logs help quickly pinpoint auth and route failures.
 app.use("*", async (c, next) => {
   const start = Date.now();
@@ -60,6 +104,34 @@ app.get("/", (c) => {
 // Health check endpoint
 app.get("/api/health", (c) => {
   return c.json({ status: "ok", message: "Backend is running" });
+});
+
+app.get("/api/users", (c) => {
+  try {
+    requireAuth(c);
+
+    const users = db
+      .prepare(
+        `
+      SELECT id, auth0_id, email, name, picture, created_at
+      FROM users
+      ORDER BY COALESCE(name, email) ASC
+    `,
+      )
+      .all() as any[];
+
+    return c.json({ users, total: users.length });
+  } catch (error) {
+    console.error("[api:/api/users] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
 });
 
 // Get current user profile
@@ -268,12 +340,12 @@ app.get("/api/batches", (c) => {
   try {
     const auth = requireAuth(c);
 
-    const userId = `user_${auth.sub.replace(/:/g, "_")}`;
+    const userId = getUserIdFromSub(auth.sub);
 
     const batches = db
       .prepare(
         `
-      SELECT DISTINCT b.id, b.name, b.description, b.owner_id, b.created_at
+      SELECT DISTINCT b.id, b.name, b.emoji, b.description, b.owner_id, b.created_at, b.updated_at
       FROM batches b
       LEFT JOIN batch_members bm ON b.id = bm.batch_id
       WHERE b.owner_id = ? OR bm.user_id = ?
@@ -282,7 +354,13 @@ app.get("/api/batches", (c) => {
       )
       .all(userId, userId) as any[];
 
-    return c.json({ batches, total: batches.length });
+    const hydratedBatches = batches.map((batch) => ({
+      ...batch,
+      members: getBatchMembers(batch.id),
+      canEdit: batch.owner_id === userId,
+    }));
+
+    return c.json({ batches: hydratedBatches, total: hydratedBatches.length });
   } catch (error) {
     console.error("[api:/api/batches GET] failed:", error);
     return c.json(
@@ -300,21 +378,125 @@ app.get("/api/batches", (c) => {
 app.post("/api/batches", async (c) => {
   try {
     const auth = requireAuth(c);
-    const body = (await c.req.json()) as any;
+    const body = (await c.req.json()) as {
+      name?: string;
+      emoji?: string;
+      description?: string;
+      memberIds?: string[];
+    };
 
-    const userId = `user_${auth.sub.replace(/:/g, "_")}`;
+    const userId = getUserIdFromSub(auth.sub);
     const id = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const name = (body.name || "").trim();
+    const emoji = (body.emoji || "💸").trim() || "💸";
+    const memberIds = normalizeMemberIds(userId, body.memberIds);
+
+    if (!name) {
+      return c.json({ error: "Group name is required" }, 400);
+    }
 
     const stmt = db.prepare(`
-      INSERT INTO batches (id, owner_id, name, description)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO batches (id, owner_id, name, emoji, description)
+      VALUES (?, ?, ?, ?, ?)
     `);
 
-    stmt.run(id, userId, body.name, body.description || null);
+    const transaction = db.transaction(() => {
+      stmt.run(id, userId, name, emoji, body.description || null);
+      syncBatchMembers(id, memberIds);
+    });
 
-    return c.json({ id, message: "Batch created" }, 201);
+    transaction();
+
+    return c.json(
+      {
+        id,
+        message: "Group created",
+        batch: {
+          id,
+          owner_id: userId,
+          name,
+          emoji,
+          description: body.description || null,
+          members: getBatchMembers(id),
+          canEdit: true,
+        },
+      },
+      201,
+    );
   } catch (error) {
     console.error("[api:/api/batches POST] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.patch("/api/batches/:id", async (c) => {
+  try {
+    const auth = requireAuth(c);
+    const body = (await c.req.json()) as {
+      name?: string;
+      emoji?: string;
+      description?: string;
+      memberIds?: string[];
+    };
+    const userId = getUserIdFromSub(auth.sub);
+    const batchId = c.req.param("id");
+    const name = (body.name || "").trim();
+    const emoji = (body.emoji || "💸").trim() || "💸";
+    const memberIds = normalizeMemberIds(userId, body.memberIds);
+
+    if (!name) {
+      return c.json({ error: "Group name is required" }, 400);
+    }
+
+    const existing = db
+      .prepare(`SELECT id, owner_id FROM batches WHERE id = ?`)
+      .get(batchId) as { id: string; owner_id: string } | undefined;
+
+    if (!existing) {
+      return c.json({ error: "Group not found" }, 404);
+    }
+
+    if (existing.owner_id !== userId) {
+      return c.json({ error: "Only the group owner can update it" }, 403);
+    }
+
+    const updateStmt = db.prepare(`
+      UPDATE batches
+      SET name = ?, emoji = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+
+    const transaction = db.transaction(() => {
+      updateStmt.run(name, emoji, body.description || null, batchId);
+      syncBatchMembers(batchId, memberIds);
+    });
+
+    transaction();
+
+    const updated = db
+      .prepare(
+        `
+      SELECT id, name, emoji, description, owner_id, created_at, updated_at
+      FROM batches
+      WHERE id = ?
+    `,
+      )
+      .get(batchId) as any;
+
+    return c.json({
+      ...updated,
+      members: getBatchMembers(batchId),
+      canEdit: true,
+    });
+  } catch (error) {
+    console.error("[api:/api/batches PATCH] failed:", error);
     return c.json(
       {
         error: isUnauthorizedError(error)
