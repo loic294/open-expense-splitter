@@ -44,6 +44,7 @@ interface Transaction {
   id: string;
   batchId: string;
   amount: number;
+  currency: string;
   name: string;
   description: string;
   transactionDate: string;
@@ -72,17 +73,55 @@ interface GroupExpenseSummary {
   settlements: SettlementStep[];
 }
 
+const SUPPORTED_CURRENCIES = [
+  "USD",
+  "EUR",
+  "GBP",
+  "CAD",
+  "AUD",
+  "CHF",
+  "JPY",
+  "CNY",
+  "INR",
+  "BRL",
+  "MXN",
+] as const;
+
+function normalizeCurrency(raw?: string) {
+  const value = (raw || "").trim().toUpperCase();
+  return SUPPORTED_CURRENCIES.includes(
+    value as (typeof SUPPORTED_CURRENCIES)[number],
+  )
+    ? value
+    : "USD";
+}
+
+function normalizeSupportedCurrencies(raw: unknown): string[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const normalized = raw
+    .filter((item): item is string => typeof item === "string")
+    .map((item: string) => normalizeCurrency(item));
+
+  return Array.from(new Set(normalized));
+}
+
 function roundCurrency(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function currencyLabel(value: number) {
-  return new Intl.NumberFormat(undefined, {
+function currencyLabel(value: number, currency: string) {
+  const normalizedCurrency = normalizeCurrency(currency);
+  const formatted = new Intl.NumberFormat(undefined, {
     style: "currency",
-    currency: "USD",
+    currency: normalizedCurrency,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
+
+  return normalizedCurrency === "USD" ? `USD ${formatted}` : formatted;
 }
 
 function splitWeights(
@@ -119,6 +158,7 @@ function splitWeights(
 function buildGroupExpenseSummary(
   members: GroupMember[],
   transactions: Transaction[],
+  toDisplayAmount: (transaction: Transaction) => number,
 ): GroupExpenseSummary {
   const memberIds = members.map((member) => member.id);
   const memberSet = new Set(memberIds);
@@ -132,7 +172,7 @@ function buildGroupExpenseSummary(
   let totalExpenses = 0;
 
   transactions.forEach((transaction) => {
-    const amount = Number(transaction.amount || 0);
+    const amount = Number(toDisplayAmount(transaction) || 0);
     if (amount <= 0) {
       return;
     }
@@ -234,6 +274,44 @@ function getDateInputValue(value?: string) {
   return value.includes("T") ? value.slice(0, 10) : value;
 }
 
+function routeGroupId(groupId: string) {
+  return groupId.replace(/^batch_/, "");
+}
+
+function getGroupIdFromPath() {
+  const match = window.location.pathname.match(/^\/groups\/([^/]+)$/);
+  if (!match) {
+    return null;
+  }
+
+  const value = decodeURIComponent(match[1] || "").trim();
+  return value || null;
+}
+
+function setGroupIdInPath(groupId: string | null) {
+  const url = new URL(window.location.href);
+
+  if (groupId) {
+    url.pathname = `/groups/${encodeURIComponent(routeGroupId(groupId))}`;
+  } else {
+    url.pathname = "/";
+  }
+
+  window.history.replaceState(
+    {},
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
+}
+
+function exchangeRateCacheKey(
+  date: string,
+  baseCurrency: string,
+  targetCurrency: string,
+) {
+  return `${date}|${normalizeCurrency(baseCurrency)}|${normalizeCurrency(targetCurrency)}`;
+}
+
 function createDefaultSplitData(memberIds: string[]): SplitData {
   return {
     includedMemberIds: memberIds,
@@ -249,6 +327,7 @@ function normalizeTransaction(raw: any, group: Group | null): Transaction {
     id: raw.id,
     batchId: raw.batch_id,
     amount: Number(raw.amount || 0),
+    currency: normalizeCurrency(raw.currency),
     name: raw.name || raw.description || "",
     description: raw.details || "",
     transactionDate: getDateInputValue(raw.transaction_date || raw.date),
@@ -338,6 +417,7 @@ function summarizeTransaction(transaction: Transaction) {
     id: transaction.id,
     batchId: transaction.batchId,
     amount: transaction.amount,
+    currency: transaction.currency,
     name: transaction.name,
     description: transaction.description,
     transactionDate: transaction.transactionDate,
@@ -392,6 +472,19 @@ function App() {
     splitType: SplitType;
     splitData: SplitData;
   } | null>(null);
+  const [displayCurrency, setDisplayCurrency] = useState("USD");
+  const [supportedCurrencies, setSupportedCurrencies] = useState<string[]>([
+    ...SUPPORTED_CURRENCIES,
+  ]);
+  const [loadingCurrencyPreference, setLoadingCurrencyPreference] =
+    useState(false);
+  const [savingCurrencyPreference, setSavingCurrencyPreference] =
+    useState(false);
+  const [resolvingRates, setResolvingRates] = useState(false);
+  const [exchangeRateCache, setExchangeRateCache] = useState<
+    Record<string, number>
+  >({});
+  const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(null);
 
   const selectedGroup =
     groups.find((group) => group.id === selectedGroupId) ?? groups[0] ?? null;
@@ -406,12 +499,44 @@ function App() {
     transactions.find(
       (transaction) => transaction.id === activeSplitTransactionId,
     ) || null;
+  const displayAmountsByTransactionId = useMemo(() => {
+    const next: Record<string, number> = {};
+
+    transactions.forEach((transaction) => {
+      const amount = Number(transaction.amount || 0);
+      const sourceCurrency = normalizeCurrency(transaction.currency);
+      if (sourceCurrency === displayCurrency) {
+        next[transaction.id] = amount;
+        return;
+      }
+
+      const dateKey = getDateInputValue(transaction.transactionDate);
+      const rateKey = exchangeRateCacheKey(
+        dateKey,
+        sourceCurrency,
+        displayCurrency,
+      );
+      const rate = exchangeRateCache[rateKey];
+      next[transaction.id] =
+        typeof rate === "number" && Number.isFinite(rate) && rate > 0
+          ? amount * rate
+          : amount;
+    });
+
+    return next;
+  }, [transactions, displayCurrency, exchangeRateCache]);
   const expenseSummary = useMemo(
     () =>
       selectedGroup
-        ? buildGroupExpenseSummary(selectedGroup.members, transactions)
+        ? buildGroupExpenseSummary(
+            selectedGroup.members,
+            transactions,
+            (transaction) =>
+              displayAmountsByTransactionId[transaction.id] ??
+              Number(transaction.amount || 0),
+          )
         : null,
-    [selectedGroup, transactions],
+    [selectedGroup, transactions, displayAmountsByTransactionId],
   );
 
   const clearTransactionTimer = (transactionId: string) => {
@@ -420,6 +545,19 @@ function App() {
       window.clearTimeout(timer);
       delete saveTimersRef.current[transactionId];
     }
+  };
+
+  const fieldKey = (transactionId: string, field: string) =>
+    `${transactionId}:${field}`;
+
+  const isFocusedField = (key: string) => focusedFieldKey === key;
+
+  const handleFieldFocus = (key: string) => {
+    setFocusedFieldKey(key);
+  };
+
+  const handleFieldBlur = (key: string) => {
+    setFocusedFieldKey((current) => (current === key ? null : current));
   };
 
   useEffect(() => {
@@ -479,12 +617,23 @@ function App() {
       setGroups(nextGroups);
       setAvailableUsers(nextUsers);
 
+      const routeId = getGroupIdFromPath();
       const hasSelectedGroup = nextGroups.some(
         (group) => group.id === selectedGroupId,
       );
-      const nextSelectedGroupId = hasSelectedGroup
-        ? selectedGroupId
-        : nextGroups[0]?.id || null;
+
+      let nextSelectedGroupId = hasSelectedGroup ? selectedGroupId : null;
+
+      if (!nextSelectedGroupId && routeId) {
+        const routedGroup = nextGroups.find(
+          (group) => group.id === routeId || group.id === `batch_${routeId}`,
+        );
+        nextSelectedGroupId = routedGroup?.id || null;
+      }
+
+      if (!nextSelectedGroupId) {
+        nextSelectedGroupId = nextGroups[0]?.id || null;
+      }
 
       setSelectedGroupId(nextSelectedGroupId);
 
@@ -562,6 +711,12 @@ function App() {
   };
 
   useEffect(() => {
+    const groupIdFromPath = getGroupIdFromPath();
+    if (groupIdFromPath) {
+      setSelectedGroupId(groupIdFromPath);
+      return;
+    }
+
     const storedGroupId = window.localStorage.getItem("selectedGroupId");
     if (storedGroupId) {
       setSelectedGroupId(storedGroupId);
@@ -569,8 +724,13 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!selectedGroupId) return;
+    if (!selectedGroupId) {
+      setGroupIdInPath(null);
+      return;
+    }
+
     window.localStorage.setItem("selectedGroupId", selectedGroupId);
+    setGroupIdInPath(selectedGroupId);
   }, [selectedGroupId]);
 
   useEffect(() => {
@@ -611,6 +771,170 @@ function App() {
     fetchTransactions(selectedGroup);
   }, [selectedGroup, showGroupForm, groups.length, selectedGroupId]);
 
+  useEffect(() => {
+    if (!selectedGroup || showGroupForm) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadCurrencyPreference = async () => {
+      try {
+        setLoadingCurrencyPreference(true);
+        const response = await apiCall(
+          `/api/batches/${selectedGroup.id}/currency-preference`,
+        );
+        if (cancelled) {
+          return;
+        }
+
+        setDisplayCurrency(normalizeCurrency(response.currency));
+        const next = normalizeSupportedCurrencies(response.supportedCurrencies);
+        if (next.length > 0) {
+          setSupportedCurrencies(next);
+        }
+      } catch (error) {
+        console.error("Failed to fetch currency preference:", error);
+      } finally {
+        if (!cancelled) {
+          setLoadingCurrencyPreference(false);
+        }
+      }
+    };
+
+    loadCurrencyPreference();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGroup?.id, showGroupForm, apiCall]);
+
+  useEffect(() => {
+    if (!selectedGroup || transactions.length === 0) {
+      return;
+    }
+
+    const missingByBase = new Map<string, Set<string>>();
+    transactions.forEach((transaction) => {
+      const sourceCurrency = normalizeCurrency(transaction.currency);
+      if (sourceCurrency === displayCurrency) {
+        return;
+      }
+
+      const date = getDateInputValue(transaction.transactionDate);
+      const key = exchangeRateCacheKey(date, sourceCurrency, displayCurrency);
+      if (exchangeRateCache[key]) {
+        return;
+      }
+
+      const existing = missingByBase.get(sourceCurrency) || new Set<string>();
+      existing.add(date);
+      missingByBase.set(sourceCurrency, existing);
+    });
+
+    if (missingByBase.size === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const resolveRates = async () => {
+      try {
+        setResolvingRates(true);
+        const responses = await Promise.all(
+          Array.from(missingByBase.entries()).map(([baseCurrency, dates]) =>
+            apiCall("/api/exchange-rates/resolve", {
+              method: "POST",
+              body: JSON.stringify({
+                baseCurrency,
+                targetCurrency: displayCurrency,
+                dates: Array.from(dates),
+              }),
+            }),
+          ),
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        const nextRates: Record<string, number> = {};
+        responses.forEach((response) => {
+          const base = normalizeCurrency(response.baseCurrency);
+          const target = normalizeCurrency(response.targetCurrency);
+          const next = normalizeSupportedCurrencies(
+            response.supportedCurrencies,
+          );
+          if (next.length > 0) {
+            setSupportedCurrencies(next);
+          }
+
+          const ratesByDate =
+            response.ratesByDate && typeof response.ratesByDate === "object"
+              ? (response.ratesByDate as Record<string, number>)
+              : {};
+          Object.entries(ratesByDate).forEach(([date, rate]) => {
+            if (typeof rate === "number" && Number.isFinite(rate) && rate > 0) {
+              nextRates[exchangeRateCacheKey(date, base, target)] = rate;
+            }
+          });
+        });
+
+        if (Object.keys(nextRates).length > 0) {
+          setExchangeRateCache((prev) => ({ ...prev, ...nextRates }));
+        }
+      } catch (error) {
+        console.error("Failed to resolve exchange rates:", error);
+      } finally {
+        if (!cancelled) {
+          setResolvingRates(false);
+        }
+      }
+    };
+
+    resolveRates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedGroup?.id,
+    transactions,
+    displayCurrency,
+    exchangeRateCache,
+    apiCall,
+  ]);
+
+  const updateDisplayCurrencyPreference = async (nextCurrency: string) => {
+    if (!selectedGroup) {
+      return;
+    }
+
+    const currency = normalizeCurrency(nextCurrency);
+    setDisplayCurrency(currency);
+
+    try {
+      setSavingCurrencyPreference(true);
+      const response = await apiCall(
+        `/api/batches/${selectedGroup.id}/currency-preference`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ currency }),
+        },
+      );
+
+      setDisplayCurrency(normalizeCurrency(response.currency));
+      const next = normalizeSupportedCurrencies(response.supportedCurrencies);
+      if (next.length > 0) {
+        setSupportedCurrencies(next);
+      }
+    } catch (error) {
+      console.error("Failed to update currency preference:", error);
+    } finally {
+      setSavingCurrencyPreference(false);
+    }
+  };
+
   const persistTransaction = async (
     transaction: Transaction,
     mode: "patch" | "create" = "patch",
@@ -628,6 +952,7 @@ function App() {
           body: JSON.stringify({
             batchId: transaction.batchId,
             amount: transaction.amount,
+            currency: transaction.currency,
             name: transaction.name,
             description: transaction.description,
             transactionDate: transaction.transactionDate,
@@ -666,6 +991,7 @@ function App() {
           body: JSON.stringify({
             batchId: transaction.batchId,
             amount: transaction.amount,
+            currency: transaction.currency,
             name: transaction.name,
             description: transaction.description,
             transactionDate: transaction.transactionDate,
@@ -772,6 +1098,7 @@ function App() {
       id: `draft_${Date.now()}`,
       batchId: selectedGroup.id,
       amount: 0,
+      currency: displayCurrency,
       name: "",
       description: "",
       transactionDate: defaultDate,
@@ -936,6 +1263,32 @@ function App() {
           </button>
           {isAuthenticated ? (
             <div className="flex items-center gap-2">
+              {selectedGroup &&
+                !showGroupForm &&
+                currentView === "dashboard" && (
+                  <div className="flex items-center gap-1">
+                    <span className="hidden sm:inline text-xs text-base-content/70">
+                      Currency
+                    </span>
+                    <select
+                      className="select select-xs"
+                      value={displayCurrency}
+                      disabled={
+                        loadingCurrencyPreference || savingCurrencyPreference
+                      }
+                      onChange={(event) =>
+                        updateDisplayCurrencyPreference(event.target.value)
+                      }
+                    >
+                      {supportedCurrencies.map((currency) => (
+                        <option key={currency} value={currency}>
+                          {currency}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
               {currentView === "dashboard" &&
                 !showGroupForm &&
                 selectedGroup && (
@@ -1189,9 +1542,18 @@ function App() {
                             </h2>
                             <span className="badge badge-soft badge-primary">
                               Total expenses:{" "}
-                              {currencyLabel(expenseSummary.totalExpenses)}
+                              {currencyLabel(
+                                expenseSummary.totalExpenses,
+                                displayCurrency,
+                              )}
                             </span>
                           </div>
+                          {resolvingRates && (
+                            <p className="text-xs text-base-content/70">
+                              Loading historical FX rates for the selected
+                              display currency.
+                            </p>
+                          )}
 
                           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                             {selectedGroup.members.map((member) => {
@@ -1217,14 +1579,18 @@ function App() {
                                       className={`${tone} text-sm font-medium`}
                                     >
                                       {net > 0.009
-                                        ? `is owed ${currencyLabel(net)}`
+                                        ? `is owed ${currencyLabel(net, displayCurrency)}`
                                         : net < -0.009
-                                          ? `owes ${currencyLabel(Math.abs(net))}`
+                                          ? `owes ${currencyLabel(Math.abs(net), displayCurrency)}`
                                           : "settled"}
                                     </span>
                                   </div>
                                   <div className="mt-1 text-xs text-base-content/70">
-                                    Spent: {currencyLabel(balance?.paid ?? 0)}
+                                    Spent:{" "}
+                                    {currencyLabel(
+                                      balance?.paid ?? 0,
+                                      displayCurrency,
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -1263,7 +1629,10 @@ function App() {
                                           pays
                                         </span>
                                         <span className="font-semibold">
-                                          {currencyLabel(step.amount)}
+                                          {currencyLabel(
+                                            step.amount,
+                                            displayCurrency,
+                                          )}
                                         </span>
                                         <span className="text-base-content/70">
                                           to
@@ -1316,6 +1685,7 @@ function App() {
                                 <tr>
                                   <th className="min-w-56">Name</th>
                                   <th className="min-w-24">Amount</th>
+                                  <th className="min-w-24">Currency</th>
                                   <th className="min-w-32">Split</th>
                                   <th className="min-w-44">Paid by</th>
                                   <th className="min-w-36">Date</th>
@@ -1326,6 +1696,30 @@ function App() {
                               </thead>
                               <tbody>
                                 {transactions.map((transaction) => {
+                                  const nameFieldKey = fieldKey(
+                                    transaction.id,
+                                    "name",
+                                  );
+                                  const amountFieldKey = fieldKey(
+                                    transaction.id,
+                                    "amount",
+                                  );
+                                  const currencyFieldKey = fieldKey(
+                                    transaction.id,
+                                    "currency",
+                                  );
+                                  const dateFieldKey = fieldKey(
+                                    transaction.id,
+                                    "date",
+                                  );
+                                  const categoryFieldKey = fieldKey(
+                                    transaction.id,
+                                    "category",
+                                  );
+                                  const descriptionFieldKey = fieldKey(
+                                    transaction.id,
+                                    "description",
+                                  );
                                   const paidByMember =
                                     selectedGroup.members.find(
                                       (member) =>
@@ -1338,14 +1732,23 @@ function App() {
                                         <input
                                           className="input input-sm w-full min-w-56"
                                           value={transaction.name}
-                                          onChange={(e) =>
-                                            updateTransaction(
-                                              transaction.id,
-                                              (item) => ({
-                                                ...item,
-                                                name: e.target.value,
-                                              }),
-                                            )
+                                          onFocus={() =>
+                                            handleFieldFocus(nameFieldKey)
+                                          }
+                                          onBlur={() =>
+                                            handleFieldBlur(nameFieldKey)
+                                          }
+                                          onChange={
+                                            isFocusedField(nameFieldKey)
+                                              ? (e) =>
+                                                  updateTransaction(
+                                                    transaction.id,
+                                                    (item) => ({
+                                                      ...item,
+                                                      name: e.target.value,
+                                                    }),
+                                                  )
+                                              : undefined
                                           }
                                           placeholder="Dinner"
                                         />
@@ -1362,18 +1765,65 @@ function App() {
                                               : transaction.amount
                                           }
                                           placeholder="0.00"
-                                          onChange={(e) =>
-                                            updateTransaction(
-                                              transaction.id,
-                                              (item) => ({
-                                                ...item,
-                                                amount: Number(
-                                                  e.target.value || 0,
-                                                ),
-                                              }),
-                                            )
+                                          onFocus={() =>
+                                            handleFieldFocus(amountFieldKey)
+                                          }
+                                          onBlur={() =>
+                                            handleFieldBlur(amountFieldKey)
+                                          }
+                                          onChange={
+                                            isFocusedField(amountFieldKey)
+                                              ? (e) =>
+                                                  updateTransaction(
+                                                    transaction.id,
+                                                    (item) => ({
+                                                      ...item,
+                                                      amount: Number(
+                                                        e.target.value || 0,
+                                                      ),
+                                                    }),
+                                                  )
+                                              : undefined
                                           }
                                         />
+                                      </td>
+                                      <td>
+                                        <select
+                                          className="select select-sm w-full min-w-24"
+                                          value={transaction.currency}
+                                          onFocus={() =>
+                                            handleFieldFocus(currencyFieldKey)
+                                          }
+                                          onBlur={() =>
+                                            handleFieldBlur(currencyFieldKey)
+                                          }
+                                          onChange={
+                                            isFocusedField(currencyFieldKey)
+                                              ? (e) =>
+                                                  updateTransaction(
+                                                    transaction.id,
+                                                    (item) => ({
+                                                      ...item,
+                                                      currency:
+                                                        normalizeCurrency(
+                                                          e.target.value,
+                                                        ),
+                                                    }),
+                                                  )
+                                              : undefined
+                                          }
+                                        >
+                                          {supportedCurrencies.map(
+                                            (currency) => (
+                                              <option
+                                                key={`${transaction.id}-${currency}`}
+                                                value={currency}
+                                              >
+                                                {currency}
+                                              </option>
+                                            ),
+                                          )}
+                                        </select>
                                       </td>
                                       <td>
                                         <button
@@ -1447,14 +1897,24 @@ function App() {
                                           className="input input-sm w-full min-w-36"
                                           type="date"
                                           value={transaction.transactionDate}
-                                          onChange={(e) =>
-                                            updateTransaction(
-                                              transaction.id,
-                                              (item) => ({
-                                                ...item,
-                                                transactionDate: e.target.value,
-                                              }),
-                                            )
+                                          onFocus={() =>
+                                            handleFieldFocus(dateFieldKey)
+                                          }
+                                          onBlur={() =>
+                                            handleFieldBlur(dateFieldKey)
+                                          }
+                                          onChange={
+                                            isFocusedField(dateFieldKey)
+                                              ? (e) =>
+                                                  updateTransaction(
+                                                    transaction.id,
+                                                    (item) => ({
+                                                      ...item,
+                                                      transactionDate:
+                                                        e.target.value,
+                                                    }),
+                                                  )
+                                              : undefined
                                           }
                                         />
                                       </td>
@@ -1463,14 +1923,23 @@ function App() {
                                           className="input input-sm w-full min-w-40"
                                           list="category-options"
                                           value={transaction.category}
-                                          onChange={(e) =>
-                                            updateTransaction(
-                                              transaction.id,
-                                              (item) => ({
-                                                ...item,
-                                                category: e.target.value,
-                                              }),
-                                            )
+                                          onFocus={() =>
+                                            handleFieldFocus(categoryFieldKey)
+                                          }
+                                          onBlur={() =>
+                                            handleFieldBlur(categoryFieldKey)
+                                          }
+                                          onChange={
+                                            isFocusedField(categoryFieldKey)
+                                              ? (e) =>
+                                                  updateTransaction(
+                                                    transaction.id,
+                                                    (item) => ({
+                                                      ...item,
+                                                      category: e.target.value,
+                                                    }),
+                                                  )
+                                              : undefined
                                           }
                                           placeholder="Food"
                                         />
@@ -1479,14 +1948,26 @@ function App() {
                                         <input
                                           className="input input-sm w-full min-w-72"
                                           value={transaction.description}
-                                          onChange={(e) =>
-                                            updateTransaction(
-                                              transaction.id,
-                                              (item) => ({
-                                                ...item,
-                                                description: e.target.value,
-                                              }),
+                                          onFocus={() =>
+                                            handleFieldFocus(
+                                              descriptionFieldKey,
                                             )
+                                          }
+                                          onBlur={() =>
+                                            handleFieldBlur(descriptionFieldKey)
+                                          }
+                                          onChange={
+                                            isFocusedField(descriptionFieldKey)
+                                              ? (e) =>
+                                                  updateTransaction(
+                                                    transaction.id,
+                                                    (item) => ({
+                                                      ...item,
+                                                      description:
+                                                        e.target.value,
+                                                    }),
+                                                  )
+                                              : undefined
                                           }
                                           placeholder="Optional"
                                         />

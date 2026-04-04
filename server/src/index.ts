@@ -10,12 +10,36 @@ initializeDB();
 
 const app = new Hono();
 
+const DEFAULT_CURRENCY = "USD";
+const SUPPORTED_CURRENCIES = [
+  "USD",
+  "EUR",
+  "GBP",
+  "CAD",
+  "AUD",
+  "CHF",
+  "JPY",
+  "CNY",
+  "INR",
+  "BRL",
+  "MXN",
+] as const;
+
 function isUnauthorizedError(error: unknown): boolean {
   return error instanceof Error && error.message === "Unauthorized";
 }
 
 function getUserIdFromSub(sub: string): string {
   return `user_${sub.replace(/:/g, "_")}`;
+}
+
+function normalizeCurrency(raw: unknown): string {
+  const value = typeof raw === "string" ? raw.trim().toUpperCase() : "";
+  return SUPPORTED_CURRENCIES.includes(
+    value as (typeof SUPPORTED_CURRENCIES)[number],
+  )
+    ? value
+    : DEFAULT_CURRENCY;
 }
 
 function normalizeMemberIds(ownerId: string, memberIds: unknown): string[] {
@@ -94,6 +118,73 @@ function serializeSplitData(value: unknown) {
   return JSON.stringify(value ?? null);
 }
 
+async function fetchHistoricalRateFromProvider(
+  date: string,
+  baseCurrency: string,
+  targetCurrency: string,
+) {
+  const url = `https://api.frankfurter.app/${encodeURIComponent(date)}?from=${encodeURIComponent(baseCurrency)}&to=${encodeURIComponent(targetCurrency)}`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`FX provider error ${response.status}`);
+  }
+
+  const payload = (await response.json()) as {
+    rates?: Record<string, number>;
+  };
+  const rate = payload.rates?.[targetCurrency];
+
+  if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0) {
+    throw new Error("FX provider returned invalid rate");
+  }
+
+  return rate;
+}
+
+async function getOrFetchRate(
+  date: string,
+  baseCurrency: string,
+  targetCurrency: string,
+): Promise<number> {
+  if (baseCurrency === targetCurrency) {
+    return 1;
+  }
+
+  const cached = db
+    .prepare(
+      `
+      SELECT rate
+      FROM exchange_rates
+      WHERE rate_date = ? AND base_currency = ? AND target_currency = ?
+      LIMIT 1
+    `,
+    )
+    .get(date, baseCurrency, targetCurrency) as { rate: number } | undefined;
+
+  if (cached?.rate && Number.isFinite(cached.rate) && cached.rate > 0) {
+    return cached.rate;
+  }
+
+  const rate = await fetchHistoricalRateFromProvider(
+    date,
+    baseCurrency,
+    targetCurrency,
+  );
+
+  db.prepare(
+    `
+    INSERT INTO exchange_rates (id, rate_date, base_currency, target_currency, rate)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(rate_date, base_currency, target_currency) DO UPDATE SET
+      rate = excluded.rate,
+      fetched_at = CURRENT_TIMESTAMP
+  `,
+  ).run(`fx_${randomUUID()}`, date, baseCurrency, targetCurrency, rate);
+
+  return rate;
+}
+
 function getRequestId(c: {
   req: { header: (name: string) => string | undefined };
   res: { headers: Headers };
@@ -112,6 +203,7 @@ function summarizeSpendingPayload(body: {
   description?: string;
   transactionDate?: string;
   category?: string;
+  currency?: string;
   paidById?: string;
   splitType?: string;
   splitData?: unknown;
@@ -131,6 +223,7 @@ function summarizeSpendingPayload(body: {
     description: body.description,
     transactionDate: body.transactionDate,
     category: body.category,
+    currency: body.currency,
     paidById: body.paidById,
     splitType: body.splitType,
     splitMembers: Array.isArray(splitData?.includedMemberIds)
@@ -156,6 +249,7 @@ function summarizeSpendingRecord(spending: any) {
     details: spending.details,
     transactionDate: spending.transaction_date,
     category: spending.category,
+    currency: spending.currency,
     paidById: spending.paid_by_id,
     splitType: spending.split_type,
     splitMembers: Array.isArray(spending.split_data?.includedMemberIds)
@@ -176,6 +270,7 @@ function getSpendingsForBatch(batchId: string) {
              description,
              amount,
              category,
+             currency,
              date AS transaction_date,
              paid_by_id,
              split_type,
@@ -473,6 +568,7 @@ app.post("/api/spendings", async (c) => {
       description?: string;
       transactionDate?: string;
       category?: string;
+      currency?: string;
       paidById?: string;
       splitType?: string;
       splitData?: unknown;
@@ -509,6 +605,7 @@ app.post("/api/spendings", async (c) => {
     const transactionName = (body.name || "").trim() || "New transaction";
     const details = (body.description || "").trim();
     const transactionDate = body.transactionDate || new Date().toISOString();
+    const currency = normalizeCurrency(body.currency);
 
     console.debug("[api:%s] spendings.create normalized", requestId, {
       userId,
@@ -517,6 +614,7 @@ app.post("/api/spendings", async (c) => {
       transactionName,
       details,
       transactionDate,
+      currency,
       splitType: body.splitType || "equal",
     });
 
@@ -530,12 +628,13 @@ app.post("/api/spendings", async (c) => {
         description,
         amount,
         category,
+        currency,
         date,
         paid_by_id,
         split_type,
         split_data
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -547,6 +646,7 @@ app.post("/api/spendings", async (c) => {
       transactionName,
       body.amount ?? 0,
       body.category?.trim() || null,
+      currency,
       transactionDate,
       paidById,
       body.splitType || "equal",
@@ -600,6 +700,7 @@ app.patch("/api/spendings/:id", async (c) => {
       description?: string;
       transactionDate?: string;
       category?: string;
+      currency?: string;
       paidById?: string;
       splitType?: string;
       splitData?: unknown;
@@ -658,6 +759,7 @@ app.patch("/api/spendings/:id", async (c) => {
 
     const transactionName = (body.name || "").trim() || "New transaction";
     const details = (body.description || "").trim();
+    const currency = normalizeCurrency(body.currency);
 
     console.debug("[api:%s] spendings.patch normalized", requestId, {
       spendingId,
@@ -666,6 +768,7 @@ app.patch("/api/spendings/:id", async (c) => {
       transactionName,
       details,
       transactionDate: body.transactionDate || new Date().toISOString(),
+      currency,
       splitType: body.splitType || "equal",
     });
 
@@ -677,6 +780,7 @@ app.patch("/api/spendings/:id", async (c) => {
           description = ?,
           amount = ?,
           category = ?,
+          currency = ?,
           date = ?,
           paid_by_id = ?,
           split_type = ?,
@@ -691,6 +795,7 @@ app.patch("/api/spendings/:id", async (c) => {
       transactionName,
       body.amount ?? 0,
       body.category?.trim() || null,
+      currency,
       body.transactionDate || new Date().toISOString(),
       paidById,
       body.splitType || "equal",
@@ -710,6 +815,140 @@ app.patch("/api/spendings/:id", async (c) => {
     return c.json(updated);
   } catch (error) {
     console.error("[api:/api/spendings PATCH] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.get("/api/batches/:id/currency-preference", (c) => {
+  try {
+    const auth = requireAuth(c);
+    const userId = getUserIdFromSub(auth.sub);
+    const batchId = c.req.param("id");
+
+    if (!canAccessBatch(userId, batchId)) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+
+    const row = db
+      .prepare(
+        `
+      SELECT currency
+      FROM batch_user_currency_preferences
+      WHERE batch_id = ? AND user_id = ?
+      LIMIT 1
+    `,
+      )
+      .get(batchId, userId) as { currency: string } | undefined;
+
+    const currency = normalizeCurrency(row?.currency);
+    return c.json({
+      batchId,
+      currency,
+      supportedCurrencies: SUPPORTED_CURRENCIES,
+    });
+  } catch (error) {
+    console.error(
+      "[api:/api/batches/:id/currency-preference GET] failed:",
+      error,
+    );
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.put("/api/batches/:id/currency-preference", async (c) => {
+  try {
+    const auth = requireAuth(c);
+    const userId = getUserIdFromSub(auth.sub);
+    const batchId = c.req.param("id");
+    const body = (await c.req.json()) as { currency?: string };
+
+    if (!canAccessBatch(userId, batchId)) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+
+    const currency = normalizeCurrency(body.currency);
+
+    db.prepare(
+      `
+      INSERT INTO batch_user_currency_preferences (id, batch_id, user_id, currency)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(batch_id, user_id) DO UPDATE SET
+        currency = excluded.currency,
+        updated_at = CURRENT_TIMESTAMP
+    `,
+    ).run(`pref_${randomUUID()}`, batchId, userId, currency);
+
+    return c.json({
+      batchId,
+      currency,
+      supportedCurrencies: SUPPORTED_CURRENCIES,
+    });
+  } catch (error) {
+    console.error(
+      "[api:/api/batches/:id/currency-preference PUT] failed:",
+      error,
+    );
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.post("/api/exchange-rates/resolve", async (c) => {
+  try {
+    requireAuth(c);
+    const body = (await c.req.json()) as {
+      baseCurrency?: string;
+      targetCurrency?: string;
+      dates?: string[];
+    };
+
+    const baseCurrency = normalizeCurrency(body.baseCurrency);
+    const targetCurrency = normalizeCurrency(body.targetCurrency);
+    const dates = Array.from(
+      new Set(
+        (Array.isArray(body.dates) ? body.dates : [])
+          .filter((date): date is string => typeof date === "string")
+          .map((date) => date.slice(0, 10)),
+      ),
+    ).slice(0, 366);
+
+    const ratesByDate: Record<string, number> = {};
+    for (const date of dates) {
+      ratesByDate[date] = await getOrFetchRate(
+        date,
+        baseCurrency,
+        targetCurrency,
+      );
+    }
+
+    return c.json({
+      baseCurrency,
+      targetCurrency,
+      ratesByDate,
+      supportedCurrencies: SUPPORTED_CURRENCIES,
+    });
+  } catch (error) {
+    console.error("[api:/api/exchange-rates/resolve POST] failed:", error);
     return c.json(
       {
         error: isUnauthorizedError(error)
@@ -772,7 +1011,7 @@ app.post("/api/batches", async (c) => {
     };
 
     const userId = getUserIdFromSub(auth.sub);
-    const id = `batch_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const id = randomUUID();
     const name = (body.name || "").trim();
     const emoji = (body.emoji || "💸").trim() || "💸";
     const memberIds = normalizeMemberIds(userId, body.memberIds);

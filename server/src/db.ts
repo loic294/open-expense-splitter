@@ -91,6 +91,12 @@ export function initializeDB() {
     // Column already exists on subsequent runs.
   }
 
+  try {
+    db.exec("ALTER TABLE spendings ADD COLUMN currency TEXT DEFAULT 'USD'");
+  } catch {
+    // Column already exists on subsequent runs.
+  }
+
   // Batches - groups of spending for splitting
   db.exec(`
     CREATE TABLE IF NOT EXISTS batches (
@@ -137,6 +143,33 @@ export function initializeDB() {
       FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE CASCADE,
       FOREIGN KEY (spending_id) REFERENCES spendings(id) ON DELETE SET NULL,
       FOREIGN KEY (paid_by_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Per-user display currency preference scoped to a batch/group
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS batch_user_currency_preferences (
+      id TEXT PRIMARY KEY,
+      batch_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      currency TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(batch_id, user_id),
+      FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Cached historical FX rates so we do not call external APIs repeatedly
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS exchange_rates (
+      id TEXT PRIMARY KEY,
+      rate_date TEXT NOT NULL,
+      base_currency TEXT NOT NULL,
+      target_currency TEXT NOT NULL,
+      rate REAL NOT NULL,
+      fetched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(rate_date, base_currency, target_currency)
     )
   `);
 }
