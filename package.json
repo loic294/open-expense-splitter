@@ -1,0 +1,24 @@
+{
+  "name": "batch-spending-splitter",
+  "version": "1.0.0",
+  "description": "Application to split and track spending across batches",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "docker compose up",
+    "build": "docker compose build",
+    "down": "docker compose down"
+  },
+  "keywords": [
+    "spending",
+    "splitter",
+    "batch",
+    "react",
+    "hono"
+  ],
+  "author": "",
+  "license": "MIT"
+}

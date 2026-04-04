@@ -1,0 +1,19 @@
+{
+  "name": "batch-spending-splitter-server",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "preview": "node dist/index.js"
+  },
+  "dependencies": {
+    "hono": "^3.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "typescript": "^5.2.2",
+    "tsx": "^4.0.0"
+  }
+}
