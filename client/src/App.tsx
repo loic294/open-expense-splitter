@@ -1,8 +1,9 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useApiCall } from "./api";
 
 type PageView = "dashboard" | "profile";
+type SplitType = "equal" | "amount" | "percent";
 
 interface ProfileForm {
   name: string;
@@ -34,13 +35,100 @@ interface GroupForm {
   memberIds: string[];
 }
 
+interface SplitData {
+  includedMemberIds: string[];
+  values: Record<string, number>;
+}
+
+interface Transaction {
+  id: string;
+  batchId: string;
+  amount: number;
+  name: string;
+  description: string;
+  transactionDate: string;
+  category: string;
+  paidById: string;
+  splitType: SplitType;
+  splitData: SplitData;
+}
+
+function getDateInputValue(value?: string) {
+  if (!value) {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  return value.includes("T") ? value.slice(0, 10) : value;
+}
+
+function createDefaultSplitData(memberIds: string[]): SplitData {
+  return {
+    includedMemberIds: memberIds,
+    values: Object.fromEntries(memberIds.map((id) => [id, 0])),
+  };
+}
+
+function normalizeTransaction(raw: any, group: Group | null): Transaction {
+  const memberIds = group?.members.map((member) => member.id) || [];
+  const splitData = raw.split_data || createDefaultSplitData(memberIds);
+
+  return {
+    id: raw.id,
+    batchId: raw.batch_id,
+    amount: Number(raw.amount || 0),
+    name: raw.name || raw.description || "",
+    description: raw.details || "",
+    transactionDate: getDateInputValue(raw.transaction_date || raw.date),
+    category: raw.category || "",
+    paidById: raw.paid_by_id || memberIds[0] || "",
+    splitType: (raw.split_type || "equal") as SplitType,
+    splitData: {
+      includedMemberIds:
+        splitData.includedMemberIds?.length > 0
+          ? splitData.includedMemberIds
+          : memberIds,
+      values: splitData.values || {},
+    },
+  };
+}
+
+function splitLabel(transaction: Transaction, members: GroupMember[]) {
+  if (transaction.splitType === "percent") {
+    return "Exact %";
+  }
+
+  if (transaction.splitType === "amount") {
+    return "Exact amounts";
+  }
+
+  const includedCount = transaction.splitData.includedMemberIds.length;
+  if (includedCount === 2) {
+    return "50 / 50";
+  }
+
+  if (includedCount > 0) {
+    return `Equal (${includedCount})`;
+  }
+
+  return `Equal (${members.length})`;
+}
+
+function memberName(member: GroupMember) {
+  return member.name || member.email;
+}
+
 function App() {
   const { loginWithRedirect, logout, isAuthenticated, isLoading, user } =
     useAuth0();
-  const [spendings, setSpendings] = useState<any[]>([]);
-  const [amount, setAmount] = useState("");
-  const [description, setDescription] = useState("");
+  const apiCall = useApiCall();
+  const saveTimersRef = useRef<Record<string, number>>({});
+
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [savingTransactions, setSavingTransactions] = useState<
+    Record<string, boolean>
+  >({});
   const [currentView, setCurrentView] = useState<PageView>("dashboard");
   const [profileForm, setProfileForm] = useState<ProfileForm>({
     name: "",
@@ -65,10 +153,34 @@ function App() {
   });
   const [savingGroup, setSavingGroup] = useState(false);
   const [groupMessage, setGroupMessage] = useState<string | null>(null);
-  const apiCall = useApiCall();
+  const [activeSplitTransactionId, setActiveSplitTransactionId] = useState<
+    string | null
+  >(null);
+  const [splitEditor, setSplitEditor] = useState<{
+    splitType: SplitType;
+    splitData: SplitData;
+  } | null>(null);
 
   const selectedGroup =
     groups.find((group) => group.id === selectedGroupId) ?? groups[0] ?? null;
+  const activeSplitTransaction =
+    transactions.find(
+      (transaction) => transaction.id === activeSplitTransactionId,
+    ) || null;
+
+  const clearTransactionTimer = (transactionId: string) => {
+    const timer = saveTimersRef.current[transactionId];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete saveTimersRef.current[transactionId];
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      Object.keys(saveTimersRef.current).forEach(clearTransactionTimer);
+    };
+  }, []);
 
   const handleProfileImageUpload = (file?: File) => {
     if (!file) return;
@@ -143,6 +255,25 @@ function App() {
     }
   };
 
+  const fetchTransactions = async (group: Group) => {
+    try {
+      setLoadingData(true);
+      const data = await apiCall(
+        `/api/spendings?batchId=${encodeURIComponent(group.id)}`,
+      );
+      setTransactions(
+        ((data.spendings || []) as any[]).map((transaction) =>
+          normalizeTransaction(transaction, group),
+        ),
+      );
+      setCategories((data.categories || []) as string[]);
+    } catch (error) {
+      console.error("Failed to fetch transactions:", error);
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
   const openCreateGroupForm = () => {
     setGroupMessage(null);
     setEditingGroupId(null);
@@ -173,31 +304,32 @@ function App() {
     }));
   };
 
-  // Fetch spendings when authenticated
+  useEffect(() => {
+    const storedGroupId = window.localStorage.getItem("selectedGroupId");
+    if (storedGroupId) {
+      setSelectedGroupId(storedGroupId);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedGroupId) return;
+    window.localStorage.setItem("selectedGroupId", selectedGroupId);
+  }, [selectedGroupId]);
+
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const initAndFetchSpendings = async () => {
+    const init = async () => {
       try {
-        setLoadingData(true);
         console.debug("[app] ensuring user exists via /api/auth/login");
         await apiCall("/api/auth/login", { method: "POST" });
-        console.debug("[app] user ensured, fetching /api/spendings");
-        const [spendingData, profileData] = await Promise.all([
-          apiCall("/api/spendings"),
-          apiCall("/api/me"),
-        ]);
-        setSpendings(spendingData.spendings || []);
-        applyProfile(profileData);
-        await fetchGroups();
+        await Promise.all([fetchProfile(), fetchGroups()]);
       } catch (error) {
-        console.error("Failed to fetch spendings:", error);
-      } finally {
-        setLoadingData(false);
+        console.error("Failed to initialize app:", error);
       }
     };
 
-    initAndFetchSpendings();
+    init();
   }, [isAuthenticated, apiCall]);
 
   useEffect(() => {
@@ -206,37 +338,138 @@ function App() {
   }, [currentView, isAuthenticated]);
 
   useEffect(() => {
-    if (!selectedGroupId) return;
-    window.localStorage.setItem("selectedGroupId", selectedGroupId);
-  }, [selectedGroupId]);
-
-  useEffect(() => {
-    const storedGroupId = window.localStorage.getItem("selectedGroupId");
-    if (storedGroupId) {
-      setSelectedGroupId(storedGroupId);
+    if (!selectedGroup || showGroupForm) {
+      setTransactions([]);
+      setCategories([]);
+      return;
     }
-  }, []);
 
-  const handleAddSpending = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!amount || !description) return;
+    fetchTransactions(selectedGroup);
+  }, [selectedGroupId, showGroupForm]);
+
+  const persistTransaction = async (
+    transaction: Transaction,
+    mode: "patch" | "create" = "patch",
+  ) => {
+    setSavingTransactions((prev) => ({ ...prev, [transaction.id]: true }));
 
     try {
-      await apiCall("/api/spendings", {
-        method: "POST",
-        body: JSON.stringify({
-          amount: parseFloat(amount),
-          description,
-        }),
-      });
-      setAmount("");
-      setDescription("");
-      // Refresh spendings
-      const data = await apiCall("/api/spendings");
-      setSpendings(data.spendings || []);
+      if (mode === "create") {
+        const response = await apiCall("/api/spendings", {
+          method: "POST",
+          body: JSON.stringify({
+            batchId: transaction.batchId,
+            amount: transaction.amount,
+            name: transaction.name,
+            description: transaction.description,
+            transactionDate: transaction.transactionDate,
+            category: transaction.category,
+            paidById: transaction.paidById,
+            splitType: transaction.splitType,
+            splitData: transaction.splitData,
+          }),
+        });
+
+        if (response.spending && selectedGroup) {
+          const normalized = normalizeTransaction(
+            response.spending,
+            selectedGroup,
+          );
+          setTransactions((prev) => [normalized, ...prev]);
+          if (
+            normalized.category &&
+            !categories.includes(normalized.category)
+          ) {
+            setCategories((prev) => [...prev, normalized.category].sort());
+          }
+        }
+      } else {
+        const response = await apiCall(`/api/spendings/${transaction.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            batchId: transaction.batchId,
+            amount: transaction.amount,
+            name: transaction.name,
+            description: transaction.description,
+            transactionDate: transaction.transactionDate,
+            category: transaction.category,
+            paidById: transaction.paidById,
+            splitType: transaction.splitType,
+            splitData: transaction.splitData,
+          }),
+        });
+
+        if (selectedGroup) {
+          const normalized = normalizeTransaction(response, selectedGroup);
+          setTransactions((prev) =>
+            prev.map((item) => (item.id === normalized.id ? normalized : item)),
+          );
+          if (
+            normalized.category &&
+            !categories.includes(normalized.category)
+          ) {
+            setCategories((prev) => [...prev, normalized.category].sort());
+          }
+        }
+      }
     } catch (error) {
-      console.error("Failed to add spending:", error);
+      console.error("Failed to save transaction:", error);
+    } finally {
+      setSavingTransactions((prev) => ({ ...prev, [transaction.id]: false }));
     }
+  };
+
+  const scheduleTransactionSave = (transaction: Transaction) => {
+    clearTransactionTimer(transaction.id);
+    saveTimersRef.current[transaction.id] = window.setTimeout(() => {
+      persistTransaction(transaction);
+    }, 350);
+  };
+
+  const updateTransaction = (
+    transactionId: string,
+    updater: (transaction: Transaction) => Transaction,
+  ) => {
+    let nextTransaction: Transaction | null = null;
+
+    setTransactions((prev) =>
+      prev.map((transaction) => {
+        if (transaction.id !== transactionId) {
+          return transaction;
+        }
+
+        nextTransaction = updater(transaction);
+        return nextTransaction;
+      }),
+    );
+
+    if (nextTransaction) {
+      scheduleTransactionSave(nextTransaction);
+    }
+  };
+
+  const createTransaction = async () => {
+    if (!selectedGroup) {
+      return;
+    }
+
+    const memberIds = selectedGroup.members.map((member) => member.id);
+    const defaultDate = transactions[0]?.transactionDate || getDateInputValue();
+    const defaultPayer = memberIds[0] || "";
+    const transaction: Transaction = {
+      id: `draft_${Date.now()}`,
+      batchId: selectedGroup.id,
+      amount: 0,
+      name: "",
+      description: "",
+      transactionDate: defaultDate,
+      category: "",
+      paidById: defaultPayer,
+      splitType: "equal",
+      splitData: createDefaultSplitData(memberIds),
+    };
+
+    await persistTransaction(transaction, "create");
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -271,15 +504,13 @@ function App() {
         ? `/api/batches/${editingGroupId}`
         : "/api/batches";
       const method = editingGroupId ? "PATCH" : "POST";
-      const payload = {
-        name: groupForm.name,
-        emoji: groupForm.emoji,
-        memberIds: groupForm.memberIds,
-      };
-
       const response = await apiCall(endpoint, {
         method,
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          name: groupForm.name,
+          emoji: groupForm.emoji,
+          memberIds: groupForm.memberIds,
+        }),
       });
 
       setGroupMessage(editingGroupId ? "Group updated" : "Group created");
@@ -303,6 +534,70 @@ function App() {
     }
   };
 
+  const openAdvancedSplit = (transaction: Transaction) => {
+    setActiveSplitTransactionId(transaction.id);
+    setSplitEditor({
+      splitType: transaction.splitType,
+      splitData: {
+        includedMemberIds: [...transaction.splitData.includedMemberIds],
+        values: { ...transaction.splitData.values },
+      },
+    });
+  };
+
+  const handleSplitMemberToggle = (memberId: string) => {
+    setSplitEditor((prev) => {
+      if (!prev) return prev;
+
+      const included = prev.splitData.includedMemberIds.includes(memberId)
+        ? prev.splitData.includedMemberIds.filter((id) => id !== memberId)
+        : [...prev.splitData.includedMemberIds, memberId];
+
+      return {
+        ...prev,
+        splitData: {
+          ...prev.splitData,
+          includedMemberIds: included,
+          values: {
+            ...prev.splitData.values,
+            [memberId]: prev.splitData.values[memberId] ?? 0,
+          },
+        },
+      };
+    });
+  };
+
+  const handleSplitValueChange = (memberId: string, value: string) => {
+    setSplitEditor((prev) => {
+      if (!prev) return prev;
+
+      return {
+        ...prev,
+        splitData: {
+          ...prev.splitData,
+          values: {
+            ...prev.splitData.values,
+            [memberId]: Number(value || 0),
+          },
+        },
+      };
+    });
+  };
+
+  const saveAdvancedSplit = () => {
+    if (!activeSplitTransactionId || !splitEditor) {
+      return;
+    }
+
+    updateTransaction(activeSplitTransactionId, (transaction) => ({
+      ...transaction,
+      splitType: splitEditor.splitType,
+      splitData: splitEditor.splitData,
+    }));
+    setActiveSplitTransactionId(null);
+    setSplitEditor(null);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-base-200">
@@ -314,7 +609,7 @@ function App() {
   return (
     <div className="min-h-screen bg-base-200">
       <header className="navbar bg-base-100 border-b border-base-300 px-4 md:px-6">
-        <div className="w-full max-w-5xl mx-auto flex justify-between">
+        <div className="w-full max-w-6xl mx-auto flex justify-between gap-3">
           <button
             type="button"
             className="text-base md:text-lg font-semibold"
@@ -333,7 +628,7 @@ function App() {
                   onClick={() => setGroupMenuOpen((open) => !open)}
                 >
                   <span>{selectedGroup?.emoji || "💸"}</span>
-                  <span className="max-w-36 truncate">
+                  <span className="max-w-40 truncate">
                     {loadingGroups
                       ? "Loading groups..."
                       : selectedGroup?.name || "Create your first group"}
@@ -380,6 +675,7 @@ function App() {
                   )}
                 </ul>
               </div>
+
               <div
                 className={`dropdown dropdown-end ${profileMenuOpen ? "dropdown-open" : ""}`}
               >
@@ -446,7 +742,7 @@ function App() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto w-full p-3 md:p-4">
+      <main className="max-w-6xl mx-auto w-full p-3 md:p-4">
         {isAuthenticated ? (
           <div className="flex flex-col gap-3">
             {showGroupForm ? (
@@ -515,7 +811,7 @@ function App() {
                               }
                             />
                             <span>
-                              {member.name || member.email}
+                              {memberName(member)}
                               {member.email ? ` (${member.email})` : ""}
                             </span>
                           </label>
@@ -558,96 +854,240 @@ function App() {
               <>
                 {selectedGroup && (
                   <section className="card card-border bg-base-100 rounded-md w-full">
-                    <div className="card-body p-3 md:p-4 gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">{selectedGroup.emoji}</span>
-                        <h2 className="card-title text-base">
-                          {selectedGroup.name}
-                        </h2>
+                    <div className="card-body p-3 md:p-4 gap-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">
+                              {selectedGroup.emoji}
+                            </span>
+                            <h2 className="card-title text-base">
+                              {selectedGroup.name}
+                            </h2>
+                          </div>
+                          <p className="text-sm text-base-content/70">
+                            {selectedGroup.members.length} member(s)
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary"
+                          onClick={createTransaction}
+                        >
+                          New transaction
+                        </button>
                       </div>
-                      <p className="text-sm text-base-content/70">
-                        {selectedGroup.members.length} member(s) in this group.
-                      </p>
                     </div>
                   </section>
                 )}
-                <section className="card card-border bg-base-100 rounded-md w-full">
-                  <div className="card-body p-3 md:p-4 gap-3">
-                    <h2 className="card-title text-base">Add Spending</h2>
-                    <form
-                      onSubmit={handleAddSpending}
-                      className="flex flex-col gap-3"
-                    >
-                      <fieldset className="fieldset">
-                        <legend className="fieldset-legend">Description</legend>
-                        <input
-                          id="description"
-                          type="text"
-                          value={description}
-                          onChange={(e) => setDescription(e.target.value)}
-                          placeholder="What did you spend on?"
-                          className="input input-sm w-full"
-                          required
-                        />
-                      </fieldset>
 
-                      <fieldset className="fieldset">
-                        <legend className="fieldset-legend">Amount</legend>
-                        <input
-                          id="amount"
-                          type="number"
-                          value={amount}
-                          onChange={(e) => setAmount(e.target.value)}
-                          placeholder="0.00"
-                          step="0.01"
-                          min="0"
-                          className="input input-sm w-full"
-                          required
-                        />
-                      </fieldset>
+                {selectedGroup ? (
+                  <section className="card card-border bg-base-100 rounded-md w-full">
+                    <div className="card-body p-3 md:p-4 gap-3">
+                      <h2 className="card-title text-base">Transactions</h2>
+                      {loadingData ? (
+                        <div className="flex justify-center py-4">
+                          <span className="loading loading-spinner loading-md" />
+                        </div>
+                      ) : transactions.length > 0 ? (
+                        <div className="flex flex-col gap-3">
+                          {transactions.map((transaction) => (
+                            <div
+                              key={transaction.id}
+                              className="rounded-md border border-base-300 bg-base-100 p-3"
+                            >
+                              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                <fieldset className="fieldset">
+                                  <legend className="fieldset-legend">
+                                    Amount
+                                  </legend>
+                                  <input
+                                    className="input input-sm w-full"
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={transaction.amount}
+                                    onChange={(e) =>
+                                      updateTransaction(
+                                        transaction.id,
+                                        (item) => ({
+                                          ...item,
+                                          amount: Number(e.target.value || 0),
+                                        }),
+                                      )
+                                    }
+                                  />
+                                </fieldset>
 
-                      <div>
-                        <button
-                          type="submit"
-                          className="btn btn-sm btn-primary"
-                        >
-                          Add Spending
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                </section>
+                                <fieldset className="fieldset">
+                                  <legend className="fieldset-legend">
+                                    Name
+                                  </legend>
+                                  <input
+                                    className="input input-sm w-full"
+                                    value={transaction.name}
+                                    onChange={(e) =>
+                                      updateTransaction(
+                                        transaction.id,
+                                        (item) => ({
+                                          ...item,
+                                          name: e.target.value,
+                                        }),
+                                      )
+                                    }
+                                    placeholder="Dinner"
+                                  />
+                                </fieldset>
 
-                <section className="card card-border bg-base-100 rounded-md w-full">
-                  <div className="card-body p-3 md:p-4 gap-3">
-                    <h2 className="card-title text-base">Your Spendings</h2>
-                    {loadingData ? (
-                      <div className="flex justify-center py-4">
-                        <span className="loading loading-spinner loading-md" />
-                      </div>
-                    ) : spendings.length > 0 ? (
-                      <ul className="list gap-2">
-                        {spendings.map((spending) => (
-                          <li
-                            key={spending.id}
-                            className="list-row rounded-md border border-base-300 bg-base-100 px-3 py-2"
-                          >
-                            <div className="font-medium">
-                              {spending.description}
+                                <fieldset className="fieldset">
+                                  <legend className="fieldset-legend">
+                                    Description
+                                  </legend>
+                                  <input
+                                    className="input input-sm w-full"
+                                    value={transaction.description}
+                                    onChange={(e) =>
+                                      updateTransaction(
+                                        transaction.id,
+                                        (item) => ({
+                                          ...item,
+                                          description: e.target.value,
+                                        }),
+                                      )
+                                    }
+                                    placeholder="Optional"
+                                  />
+                                </fieldset>
+
+                                <fieldset className="fieldset">
+                                  <legend className="fieldset-legend">
+                                    Transaction date
+                                  </legend>
+                                  <input
+                                    className="input input-sm w-full"
+                                    type="date"
+                                    value={transaction.transactionDate}
+                                    onChange={(e) =>
+                                      updateTransaction(
+                                        transaction.id,
+                                        (item) => ({
+                                          ...item,
+                                          transactionDate: e.target.value,
+                                        }),
+                                      )
+                                    }
+                                  />
+                                </fieldset>
+
+                                <fieldset className="fieldset">
+                                  <legend className="fieldset-legend">
+                                    Category
+                                  </legend>
+                                  <input
+                                    className="input input-sm w-full"
+                                    list="category-options"
+                                    value={transaction.category}
+                                    onChange={(e) =>
+                                      updateTransaction(
+                                        transaction.id,
+                                        (item) => ({
+                                          ...item,
+                                          category: e.target.value,
+                                        }),
+                                      )
+                                    }
+                                    placeholder="Food"
+                                  />
+                                </fieldset>
+
+                                <fieldset className="fieldset">
+                                  <legend className="fieldset-legend">
+                                    Split
+                                  </legend>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm justify-start"
+                                    onClick={() =>
+                                      openAdvancedSplit(transaction)
+                                    }
+                                  >
+                                    {splitLabel(
+                                      transaction,
+                                      selectedGroup.members,
+                                    )}
+                                  </button>
+                                </fieldset>
+
+                                <fieldset className="fieldset">
+                                  <legend className="fieldset-legend">
+                                    Paid by
+                                  </legend>
+                                  <select
+                                    className="select select-sm w-full"
+                                    value={transaction.paidById}
+                                    onChange={(e) =>
+                                      updateTransaction(
+                                        transaction.id,
+                                        (item) => ({
+                                          ...item,
+                                          paidById: e.target.value,
+                                        }),
+                                      )
+                                    }
+                                  >
+                                    {selectedGroup.members.map((member) => (
+                                      <option key={member.id} value={member.id}>
+                                        {memberName(member)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </fieldset>
+
+                                <fieldset className="fieldset">
+                                  <legend className="fieldset-legend">
+                                    Advanced
+                                  </legend>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm"
+                                      onClick={() =>
+                                        openAdvancedSplit(transaction)
+                                      }
+                                    >
+                                      Advanced
+                                    </button>
+                                    {savingTransactions[transaction.id] && (
+                                      <span className="loading loading-spinner loading-xs" />
+                                    )}
+                                  </div>
+                                </fieldset>
+                              </div>
                             </div>
-                            <div className="text-right font-semibold tabular-nums">
-                              ${spending.amount.toFixed(2)}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div className="alert alert-soft">
-                        <span>No spendings yet. Add one to get started!</span>
-                      </div>
-                    )}
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="alert alert-soft">
+                          <span>
+                            No transactions yet. Create one to start tracking
+                            this group.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                ) : (
+                  <div className="alert alert-soft">
+                    <span>
+                      Select or create a group to start adding transactions.
+                    </span>
                   </div>
-                </section>
+                )}
+                <datalist id="category-options">
+                  {categories.map((category) => (
+                    <option key={category} value={category} />
+                  ))}
+                </datalist>
               </>
             ) : (
               <section className="card card-border bg-base-100 rounded-md w-full">
@@ -782,6 +1222,122 @@ function App() {
           </div>
         )}
       </main>
+
+      {activeSplitTransaction && splitEditor && selectedGroup && (
+        <dialog className="modal modal-open">
+          <div className="modal-box max-w-2xl">
+            <h3 className="font-semibold text-lg">Advanced split</h3>
+            <p className="text-sm text-base-content/70 mt-1">
+              Choose who is included, then optionally set exact amounts or exact
+              percentages.
+            </p>
+
+            <div className="mt-4 flex flex-col gap-4">
+              <fieldset className="fieldset">
+                <legend className="fieldset-legend">Split mode</legend>
+                <select
+                  className="select select-sm w-full"
+                  value={splitEditor.splitType}
+                  onChange={(e) =>
+                    setSplitEditor((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            splitType: e.target.value as SplitType,
+                          }
+                        : prev,
+                    )
+                  }
+                >
+                  <option value="equal">Equal split</option>
+                  <option value="amount">Exact amounts</option>
+                  <option value="percent">Exact percentages</option>
+                </select>
+              </fieldset>
+
+              <fieldset className="fieldset">
+                <legend className="fieldset-legend">Included people</legend>
+                <div className="flex flex-col gap-2 rounded-md border border-base-300 p-3">
+                  {selectedGroup.members.map((member) => (
+                    <label
+                      key={member.id}
+                      className="label cursor-pointer justify-start gap-3"
+                    >
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm"
+                        checked={splitEditor.splitData.includedMemberIds.includes(
+                          member.id,
+                        )}
+                        onChange={() => handleSplitMemberToggle(member.id)}
+                      />
+                      <span>{memberName(member)}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              {splitEditor.splitType !== "equal" && (
+                <fieldset className="fieldset">
+                  <legend className="fieldset-legend">
+                    {splitEditor.splitType === "amount"
+                      ? "Exact amount per person"
+                      : "Exact percentage per person"}
+                  </legend>
+                  <div className="flex flex-col gap-2 rounded-md border border-base-300 p-3">
+                    {selectedGroup.members
+                      .filter((member) =>
+                        splitEditor.splitData.includedMemberIds.includes(
+                          member.id,
+                        ),
+                      )
+                      .map((member) => (
+                        <label
+                          key={member.id}
+                          className="flex items-center gap-3"
+                        >
+                          <span className="min-w-32 text-sm">
+                            {memberName(member)}
+                          </span>
+                          <input
+                            className="input input-sm w-full"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={splitEditor.splitData.values[member.id] || 0}
+                            onChange={(e) =>
+                              handleSplitValueChange(member.id, e.target.value)
+                            }
+                          />
+                        </label>
+                      ))}
+                  </div>
+                </fieldset>
+              )}
+            </div>
+
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => {
+                  setActiveSplitTransactionId(null);
+                  setSplitEditor(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={saveAdvancedSplit}
+              >
+                Save split
+              </button>
+            </div>
+          </div>
+        </dialog>
+      )}
     </div>
   );
 }

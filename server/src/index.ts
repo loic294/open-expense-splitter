@@ -58,6 +58,73 @@ function syncBatchMembers(batchId: string, memberIds: string[]) {
   transaction(memberIds);
 }
 
+function canAccessBatch(userId: string, batchId: string): boolean {
+  const batch = db
+    .prepare(
+      `
+      SELECT b.id
+      FROM batches b
+      LEFT JOIN batch_members bm ON b.id = bm.batch_id
+      WHERE b.id = ? AND (b.owner_id = ? OR bm.user_id = ?)
+      LIMIT 1
+    `,
+    )
+    .get(batchId, userId, userId);
+
+  return !!batch;
+}
+
+function getBatchMemberIds(batchId: string): string[] {
+  return getBatchMembers(batchId).map((member) => member.id);
+}
+
+function parseSplitData(raw: string | null) {
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function serializeSplitData(value: unknown) {
+  return JSON.stringify(value ?? null);
+}
+
+function getSpendingsForBatch(batchId: string) {
+  const spendings = db
+    .prepare(
+      `
+      SELECT id,
+             user_id,
+             batch_id,
+             COALESCE(name, description) AS name,
+             details,
+             description,
+             amount,
+             category,
+             date AS transaction_date,
+             paid_by_id,
+             split_type,
+             split_data,
+             created_at
+      FROM spendings
+      WHERE batch_id = ?
+      ORDER BY date DESC, created_at DESC
+      LIMIT 200
+    `,
+    )
+    .all(batchId) as any[];
+
+  return spendings.map((spending) => ({
+    ...spending,
+    split_data: parseSplitData(spending.split_data),
+  }));
+}
+
 // Request/response logs help quickly pinpoint auth and route failures.
 app.use("*", async (c, next) => {
   const start = Date.now();
@@ -262,26 +329,37 @@ app.patch("/api/me", async (c) => {
   }
 });
 
-// Get user's spendings (only their own)
+// Get group's spendings
 app.get("/api/spendings", (c) => {
   try {
     const auth = requireAuth(c);
 
-    const userId = `user_${auth.sub.replace(/:/g, "_")}`;
+    const userId = getUserIdFromSub(auth.sub);
+    const batchId = c.req.query("batchId");
 
-    const spendings = db
+    if (!batchId) {
+      return c.json({ error: "batchId is required" }, 400);
+    }
+
+    if (!canAccessBatch(userId, batchId)) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+
+    const spendings = getSpendingsForBatch(batchId);
+
+    const categories = db
       .prepare(
         `
-      SELECT id, description, amount, category, date, created_at
+      SELECT DISTINCT category
       FROM spendings
-      WHERE user_id = ?
-      ORDER BY date DESC
-      LIMIT 100
+      WHERE batch_id = ? AND category IS NOT NULL AND TRIM(category) != ''
+      ORDER BY category ASC
     `,
       )
-      .all(userId) as any[];
+      .all(batchId)
+      .map((row: any) => row.category) as string[];
 
-    return c.json({ spendings, total: spendings.length });
+    return c.json({ spendings, categories, total: spendings.length });
   } catch (error) {
     console.error("[api:/api/spendings GET] failed:", error);
     return c.json(
@@ -299,19 +377,77 @@ app.get("/api/spendings", (c) => {
 app.post("/api/spendings", async (c) => {
   try {
     const auth = requireAuth(c);
-    const body = (await c.req.json()) as any;
+    const body = (await c.req.json()) as {
+      batchId?: string;
+      amount?: number;
+      name?: string;
+      description?: string;
+      transactionDate?: string;
+      category?: string;
+      paidById?: string;
+      splitType?: string;
+      splitData?: unknown;
+    };
 
-    const userId = `user_${auth.sub.replace(/:/g, "_")}`;
+    const userId = getUserIdFromSub(auth.sub);
     const id = `spending_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+    if (!body.batchId) {
+      return c.json({ error: "batchId is required" }, 400);
+    }
+
+    if (!canAccessBatch(userId, body.batchId)) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+
+    const batchMemberIds = getBatchMemberIds(body.batchId);
+    const paidById =
+      body.paidById && batchMemberIds.includes(body.paidById)
+        ? body.paidById
+        : batchMemberIds[0] || userId;
+
+    const transactionName = (body.name || "").trim() || "New transaction";
+    const details = (body.description || "").trim();
+    const transactionDate = body.transactionDate || new Date().toISOString();
+
     const stmt = db.prepare(`
-      INSERT INTO spendings (id, user_id, description, amount, category)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO spendings (
+        id,
+        user_id,
+        batch_id,
+        name,
+        details,
+        description,
+        amount,
+        category,
+        date,
+        paid_by_id,
+        split_type,
+        split_data
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    stmt.run(id, userId, body.description, body.amount, body.category || null);
+    stmt.run(
+      id,
+      userId,
+      body.batchId,
+      transactionName,
+      details || null,
+      transactionName,
+      body.amount ?? 0,
+      body.category?.trim() || null,
+      transactionDate,
+      paidById,
+      body.splitType || "equal",
+      serializeSplitData(body.splitData),
+    );
 
-    return c.json({ id, message: "Spending recorded" }, 201);
+    const created = getSpendingsForBatch(body.batchId).find(
+      (spending) => spending.id === id,
+    );
+
+    return c.json({ id, message: "Spending recorded", spending: created }, 201);
   } catch (error) {
     console.error("[api:/api/spendings POST] failed:", error);
     if ((error as { code?: string })?.code === "SQLITE_CONSTRAINT_FOREIGNKEY") {
@@ -324,6 +460,102 @@ app.post("/api/spendings", async (c) => {
       );
     }
 
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.patch("/api/spendings/:id", async (c) => {
+  try {
+    const auth = requireAuth(c);
+    const userId = getUserIdFromSub(auth.sub);
+    const spendingId = c.req.param("id");
+    const body = (await c.req.json()) as {
+      batchId?: string;
+      amount?: number;
+      name?: string;
+      description?: string;
+      transactionDate?: string;
+      category?: string;
+      paidById?: string;
+      splitType?: string;
+      splitData?: unknown;
+    };
+
+    const existing = db
+      .prepare(
+        `
+      SELECT id, batch_id
+      FROM spendings
+      WHERE id = ?
+    `,
+      )
+      .get(spendingId) as { id: string; batch_id: string | null } | undefined;
+
+    if (!existing) {
+      return c.json({ error: "Transaction not found" }, 404);
+    }
+
+    const batchId = body.batchId || existing.batch_id;
+    if (!batchId) {
+      return c.json({ error: "batchId is required" }, 400);
+    }
+
+    if (!canAccessBatch(userId, batchId)) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+
+    const batchMemberIds = getBatchMemberIds(batchId);
+    const paidById =
+      body.paidById && batchMemberIds.includes(body.paidById)
+        ? body.paidById
+        : batchMemberIds[0] || userId;
+
+    const transactionName = (body.name || "").trim() || "New transaction";
+    const details = (body.description || "").trim();
+
+    const stmt = db.prepare(`
+      UPDATE spendings
+      SET batch_id = ?,
+          name = ?,
+          details = ?,
+          description = ?,
+          amount = ?,
+          category = ?,
+          date = ?,
+          paid_by_id = ?,
+          split_type = ?,
+          split_data = ?
+      WHERE id = ?
+    `);
+
+    stmt.run(
+      batchId,
+      transactionName,
+      details || null,
+      transactionName,
+      body.amount ?? 0,
+      body.category?.trim() || null,
+      body.transactionDate || new Date().toISOString(),
+      paidById,
+      body.splitType || "equal",
+      serializeSplitData(body.splitData),
+      spendingId,
+    );
+
+    const updated = getSpendingsForBatch(batchId).find(
+      (spending) => spending.id === spendingId,
+    );
+
+    return c.json(updated);
+  } catch (error) {
+    console.error("[api:/api/spendings PATCH] failed:", error);
     return c.json(
       {
         error: isUnauthorizedError(error)

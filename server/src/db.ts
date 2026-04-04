@@ -41,13 +41,55 @@ export function initializeDB() {
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
       description TEXT NOT NULL,
+      name TEXT,
+      details TEXT,
       amount DECIMAL(10, 2) NOT NULL,
       category TEXT,
+      batch_id TEXT,
+      paid_by_id TEXT,
+      split_type TEXT DEFAULT 'equal',
+      split_data TEXT,
       date DATETIME DEFAULT CURRENT_TIMESTAMP,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+  try {
+    db.exec("ALTER TABLE spendings ADD COLUMN name TEXT");
+  } catch {
+    // Column already exists on subsequent runs.
+  }
+
+  try {
+    db.exec("ALTER TABLE spendings ADD COLUMN details TEXT");
+  } catch {
+    // Column already exists on subsequent runs.
+  }
+
+  try {
+    db.exec("ALTER TABLE spendings ADD COLUMN batch_id TEXT");
+  } catch {
+    // Column already exists on subsequent runs.
+  }
+
+  try {
+    db.exec("ALTER TABLE spendings ADD COLUMN paid_by_id TEXT");
+  } catch {
+    // Column already exists on subsequent runs.
+  }
+
+  try {
+    db.exec("ALTER TABLE spendings ADD COLUMN split_type TEXT DEFAULT 'equal'");
+  } catch {
+    // Column already exists on subsequent runs.
+  }
+
+  try {
+    db.exec("ALTER TABLE spendings ADD COLUMN split_data TEXT");
+  } catch {
+    // Column already exists on subsequent runs.
+  }
 
   // Batches - groups of spending for splitting
   db.exec(`
