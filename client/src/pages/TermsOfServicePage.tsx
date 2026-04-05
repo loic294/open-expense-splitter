@@ -156,9 +156,17 @@ export default function TermsOfServicePage() {
               <div className="card-body">
                 <h2 className="card-title text-xl">10. Contact Information</h2>
                 <p>
-                  If you have any questions about these Terms of Service, please
-                  contact us through our website or email. We're here to help
-                  and happy to address any concerns you may have.
+                  If you have any questions about these Terms of Service, please{" "}
+                  <a
+                    href="https://loicbellemarealford.ca/about"
+                    className="link link-hover"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    contact us
+                  </a>
+                  . We're here to help and happy to address any concerns you may
+                  have.
                 </p>
               </div>
             </section>

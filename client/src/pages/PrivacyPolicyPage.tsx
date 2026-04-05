@@ -237,8 +237,17 @@ export default function PrivacyPolicyPage() {
                 <h2 className="card-title text-xl">12. Contact Us</h2>
                 <p>
                   If you have questions or concerns about this Privacy Policy or
-                  our privacy practices, please contact us. We will respond to
-                  your inquiry within a reasonable timeframe.
+                  our privacy practices, please{" "}
+                  <a
+                    href="https://loicbellemarealford.ca/about"
+                    className="link link-hover"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    contact us
+                  </a>
+                  . We will respond to your inquiry within a reasonable
+                  timeframe.
                 </p>
               </div>
             </section>

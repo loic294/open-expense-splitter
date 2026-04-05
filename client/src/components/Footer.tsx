@@ -12,6 +12,14 @@ export default function Footer() {
         <Link to="/privacy" className="link link-hover">
           Privacy Policy
         </Link>
+        <a
+          href="https://loicbellemarealford.ca/about"
+          className="link link-hover"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Contact
+        </a>
       </nav>
 
       <div className="flex flex-row flex-end gap-2 text-xs">
