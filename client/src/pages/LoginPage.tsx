@@ -12,7 +12,7 @@ export default function LoginPage() {
               <div className="max-w-2xl space-y-5">
                 <div className="space-y-3">
                   <p className="badge badge-soft badge-primary badge-lg">
-                    Better Expense Splitter
+                    Open Expense Splitter
                   </p>
                   <h1 className="text-4xl font-semibold tracking-tight md:text-5xl pt-6">
                     Track shared spending without turning it into a spreadsheet
@@ -57,7 +57,7 @@ export default function LoginPage() {
           className="alert alert-error border border-error alert-soft shadow-sm"
         >
           <span className="text-lg leading-6">
-            Better Expense Splitter is totally open sourced and free to use, but
+            Open Expense Splitter is totally open sourced and free to use, but
             it does not encrypt your stored data.{" "}
             <b>
               Do not use it for sensitive financial information unless you

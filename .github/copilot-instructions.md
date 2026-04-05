@@ -1,4 +1,4 @@
-# Better Expense Splitter - Project Setup Guide
+# Open Expense Splitter - Project Setup Guide
 
 This is a full-stack Docker project with React + Vite frontend and Node.js + Hono backend, featuring Auth0 authentication and SQLite database persistence.
 
@@ -187,7 +187,7 @@ SQLite database is stored in Docker volume that persists:
 
 - Stop services: `npm run down` (data preserved)
 - Restart services: `npm run dev` (data restored)
-- Delete volume: `docker volume rm batch-spending-splitter_db_data` ⚠️ destructive
+- Delete volume: `docker volume rm open-expense-splitter_db_data` ⚠️ destructive
 
 ## Building for Production
 
@@ -232,7 +232,7 @@ Then use `docker-compose -f docker-compose.yml up` with production-optimized env
 ### Database Errors
 
 - Check `db_data` volume exists: `docker volume ls`
-- Reset database: `docker volume rm batch-spending-splitter_db_data`
+- Reset database: `docker volume rm open-expense-splitter_db_data`
 - Verify `/app/data` directory in container
 
 ### Port Conflicts

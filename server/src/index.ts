@@ -746,7 +746,7 @@ app.use("*", authMiddleware);
 // Root endpoint
 app.get("/", (c) => {
   return c.json({
-    name: "Better Expense Splitter API",
+    name: "Open Expense Splitter API",
     version: "1.0.0",
     endpoints: {
       health: "/api/health",

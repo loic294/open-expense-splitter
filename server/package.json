@@ -1,5 +1,5 @@
 {
-  "name": "batch-spending-splitter-server",
+  "name": "open-expense-splitter-server",
   "version": "0.0.1",
   "type": "module",
   "scripts": {

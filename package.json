@@ -1,5 +1,5 @@
 {
-  "name": "batch-spending-splitter",
+  "name": "open-expense-splitter",
   "version": "1.0.0",
   "description": "Application to split and track spending across batches",
   "private": true,

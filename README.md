@@ -1,4 +1,4 @@
-# Better Expense Splitter
+# Open Expense Splitter
 
 A full-stack application for tracking and splitting spending across batches. Built with React + Vite on the frontend and Node.js + Hono on the backend, with SQLite for persistent data storage and Auth0 for user authentication.
 
@@ -30,7 +30,7 @@ A full-stack application for tracking and splitting spending across batches. Bui
 ## Project Structure
 
 ```
-batch-spending-splitter/
+open-expense-splitter/
 ├── client/                 # React + Vite frontend
 │   ├── src/
 │   │   ├── App.tsx
@@ -87,7 +87,7 @@ batch-spending-splitter/
 4. **Create an API**:
    - Go to Applications > APIs
    - Click "Create API"
-   - Name: "Better Expense Splitter API"
+   - Name: "Open Expense Splitter API"
    - Identifier: `https://your-auth0-domain/api/v2/` (or any unique identifier)
 
 5. **Get Your Credentials**:
@@ -102,7 +102,7 @@ The frontend and backend images are published to the GitHub Container Registry. 
 ```yaml
 services:
   frontend:
-    image: ghcr.io/loic294/batch-spending-splitter-client:latest
+    image: ghcr.io/loic294/open-expense-splitter-client:latest
     ports:
       - "5173:5173"
     environment:
@@ -113,7 +113,7 @@ services:
       - backend
 
   backend:
-    image: ghcr.io/loic294/batch-spending-splitter-server:latest
+    image: ghcr.io/loic294/open-expense-splitter-server:latest
     ports:
       - "3000:3000"
     environment:
@@ -152,7 +152,7 @@ docker compose up
 1. **Clone the repository and navigate to the project**:
 
 ```bash
-cd batch-spending-splitter
+cd open-expense-splitter
 ```
 
 2. **Create environment files**:
@@ -268,7 +268,7 @@ The SQLite database is stored in a Docker volume (`db_data`) that persists betwe
 - Your data will survive container restarts
 - The database file is located at `/app/data/app.db` inside the container
 - Use `npm run down` to stop services without losing data
-- Use `docker volume rm batch-spending-splitter_db_data` to delete all data (⚠️ destructive)
+- Use `docker volume rm open-expense-splitter_db_data` to delete all data (⚠️ destructive)
 
 ## Environment Variables Reference
 
@@ -327,7 +327,7 @@ AUTH0_CLIENT_SECRET=your-secret    # Auth0 application client secret
 
 - Check that the `data` directory exists in the server container
 - Verify the volume is properly mounted: `docker volume ls`
-- Reset database: `docker volume rm batch-spending-splitter_db_data`
+- Reset database: `docker volume rm open-expense-splitter_db_data`
 
 ### Module Not Found
 
