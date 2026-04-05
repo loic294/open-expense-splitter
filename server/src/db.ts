@@ -172,6 +172,17 @@ export function initializeDB() {
       UNIQUE(rate_date, base_currency, target_currency)
     )
   `);
+
+  // Stores the user's preferred CSV-to-database field mapping for imports.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_csv_mappings (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE,
+      mapping_json TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
 }
 
 export default db;

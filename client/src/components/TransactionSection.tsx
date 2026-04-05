@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApiCall } from "../api";
 import type {
   Group,
@@ -14,6 +14,17 @@ import {
   normalizeTransaction,
   splitLabel,
 } from "../utils/spending";
+import {
+  autoMatchMapping,
+  csvImportFields,
+  importFieldLabel,
+  parseCsvContent,
+  sanitizeMappedRows,
+  toMappedRows,
+  type CsvColumnMapping,
+  type CsvImportField,
+  type ParsedCsvFile,
+} from "../utils/csvImport";
 
 function addCategory(
   category: string,
@@ -159,9 +170,141 @@ function AdvancedSplitModal({
   );
 }
 
+function CsvImportModal({
+  fileName,
+  parsed,
+  mapping,
+  previewRows,
+  validCount,
+  invalidCount,
+  isImporting,
+  onChangeMapping,
+  onCancel,
+  onImport,
+}: {
+  fileName: string;
+  parsed: ParsedCsvFile;
+  mapping: CsvColumnMapping;
+  previewRows: Array<{
+    amount: number;
+    name: string;
+    description: string;
+    transactionDate: string;
+    category: string;
+    paidById: string;
+  }>;
+  validCount: number;
+  invalidCount: number;
+  isImporting: boolean;
+  onChangeMapping: (field: CsvImportField, column: string) => void;
+  onCancel: () => void;
+  onImport: () => void;
+}) {
+  return (
+    <dialog className="modal modal-open">
+      <div className="modal-box max-w-5xl">
+        <h3 className="font-semibold text-lg">Import transactions from CSV</h3>
+        <p className="text-sm text-base-content/70 mt-1">
+          {fileName} • {parsed.rows.length} row(s) detected
+        </p>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="card card-border bg-base-100">
+            <div className="card-body p-4 gap-3">
+              <h4 className="font-semibold">Field mapping</h4>
+              <p className="text-xs text-base-content/70">
+                Adjust how CSV columns map to app fields. This mapping will be
+                saved as your default for next imports.
+              </p>
+              <div className="flex flex-col gap-2">
+                {csvImportFields.map((field) => (
+                  <label key={field} className="fieldset">
+                    <legend className="fieldset-legend">
+                      {importFieldLabel(field)}
+                    </legend>
+                    <select
+                      className="select select-sm w-full"
+                      value={mapping[field]}
+                      onChange={(event) =>
+                        onChangeMapping(field, event.target.value)
+                      }
+                    >
+                      <option value="">Not mapped</option>
+                      {parsed.headers.map((header) => (
+                        <option key={header} value={header}>
+                          {header}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="card card-border bg-base-100">
+            <div className="card-body p-4 gap-3">
+              <h4 className="font-semibold">Sanitized preview</h4>
+              <p className="text-xs text-base-content/70">
+                {validCount} valid row(s) ready, {invalidCount} row(s) skipped.
+              </p>
+              <div className="overflow-x-auto rounded-md border border-base-300">
+                <table className="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Amount</th>
+                      <th>Name</th>
+                      <th>Date</th>
+                      <th>Category</th>
+                      <th>Paid by</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.slice(0, 6).map((row, index) => (
+                      <tr key={`${row.name}-${index}`}>
+                        <td>{row.amount.toFixed(2)}</td>
+                        <td>{row.name}</td>
+                        <td>{row.transactionDate}</td>
+                        <td>{row.category || "-"}</td>
+                        <td>{row.paidById || "-"}</td>
+                      </tr>
+                    ))}
+                    {previewRows.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="text-center text-sm">
+                          No valid rows to import with current mapping.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-action">
+          <button type="button" className="btn btn-sm" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            disabled={isImporting || validCount === 0}
+            onClick={onImport}
+          >
+            {isImporting ? "Importing..." : "Import"}
+          </button>
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
 export default function TransactionSection({ group }: { group: Group }) {
   const apiCall = useApiCall();
   const saveTimersRef = useRef<Record<string, number>>({});
+  const csvInputRef = useRef<HTMLInputElement | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [loadingData, setLoadingData] = useState(false);
@@ -175,12 +318,33 @@ export default function TransactionSection({ group }: { group: Group }) {
     splitType: SplitType;
     splitData: SplitData;
   } | null>(null);
+  const [savedImportMapping, setSavedImportMapping] =
+    useState<Partial<CsvColumnMapping> | null>(null);
+  const [importState, setImportState] = useState<{
+    fileName: string;
+    parsed: ParsedCsvFile;
+    mapping: CsvColumnMapping;
+  } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importingCsv, setImportingCsv] = useState(false);
 
   const activeSplitTransaction =
     transactions.find(
       (transaction) => transaction.id === activeSplitTransactionId,
     ) || null;
   const categoryListId = `category-options-${group.id}`;
+  const mappedRows = useMemo(() => {
+    if (!importState) {
+      return [];
+    }
+
+    return toMappedRows(importState.parsed, importState.mapping);
+  }, [importState]);
+
+  const sanitizedRows = useMemo(
+    () => sanitizeMappedRows(mappedRows),
+    [mappedRows],
+  );
 
   const clearTransactionTimer = (transactionId: string) => {
     const timer = saveTimersRef.current[transactionId];
@@ -199,7 +363,26 @@ export default function TransactionSection({ group }: { group: Group }) {
   useEffect(() => {
     setActiveSplitTransactionId(null);
     setSplitEditor(null);
+    setImportState(null);
+    setImportError(null);
   }, [group.id]);
+
+  useEffect(() => {
+    const fetchSavedMapping = async () => {
+      try {
+        const data = await apiCall("/api/spendings/import-mapping");
+        const nextMapping =
+          data.mapping && typeof data.mapping === "object"
+            ? (data.mapping as Partial<CsvColumnMapping>)
+            : null;
+        setSavedImportMapping(nextMapping);
+      } catch (error) {
+        console.error("[transactions] import mapping fetch failed", error);
+      }
+    };
+
+    fetchSavedMapping();
+  }, [apiCall]);
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -394,6 +577,102 @@ export default function TransactionSection({ group }: { group: Group }) {
     setSplitEditor(null);
   };
 
+  const openCsvPicker = () => {
+    setImportError(null);
+    csvInputRef.current?.click();
+  };
+
+  const handleCsvSelected = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const content = await file.text();
+      const parsed = parseCsvContent(content);
+
+      if (parsed.headers.length === 0 || parsed.rows.length === 0) {
+        setImportError("CSV is empty or has an invalid format.");
+        return;
+      }
+
+      const mapping = autoMatchMapping(parsed.headers, savedImportMapping);
+      setImportState({
+        fileName: file.name,
+        parsed,
+        mapping,
+      });
+      setImportError(null);
+    } catch (error) {
+      console.error("[transactions] csv parse failed", error);
+      setImportError("Failed to parse the CSV file.");
+    }
+  };
+
+  const handleImport = async () => {
+    if (!importState) {
+      return;
+    }
+
+    if (!importState.mapping.amount) {
+      setImportError("The Amount field must be mapped before import.");
+      return;
+    }
+
+    if (sanitizedRows.length === 0) {
+      setImportError("No valid rows were found after sanitization.");
+      return;
+    }
+
+    try {
+      setImportingCsv(true);
+      setImportError(null);
+
+      const importedResult = await apiCall("/api/spendings/import", {
+        method: "POST",
+        body: JSON.stringify({
+          batchId: group.id,
+          rows: sanitizedRows,
+        }),
+      });
+
+      try {
+        await apiCall("/api/spendings/import-mapping", {
+          method: "PUT",
+          body: JSON.stringify({ mapping: importState.mapping }),
+        });
+        setSavedImportMapping(importState.mapping);
+      } catch (error) {
+        console.error("[transactions] import mapping save failed", error);
+      }
+
+      const imported = ((importedResult.imported || []) as any[]).map((row) =>
+        normalizeTransaction(row, group),
+      );
+
+      setTransactions((prev) => {
+        const existing = new Set(prev.map((item) => item.id));
+        const deduped = imported.filter((item) => !existing.has(item.id));
+        return [...deduped, ...prev];
+      });
+
+      imported.forEach((item) => addCategory(item.category, setCategories));
+      setImportState(null);
+    } catch (error) {
+      console.error("[transactions] csv import failed", error);
+      setImportError(
+        error instanceof Error ? error.message : "Failed to import CSV.",
+      );
+    } finally {
+      setImportingCsv(false);
+    }
+  };
+
   return (
     <>
       <section className="card card-border bg-base-100 rounded-md w-full">
@@ -408,14 +687,35 @@ export default function TransactionSection({ group }: { group: Group }) {
                 {group.members.length} member(s)
               </p>
             </div>
-            <button
-              type="button"
-              className="btn btn-sm btn-primary"
-              onClick={createTransaction}
-            >
-              New transaction
-            </button>
+            <div className="join">
+              <button
+                type="button"
+                className="btn btn-sm join-item"
+                onClick={openCsvPicker}
+              >
+                Import CSV
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary join-item"
+                onClick={createTransaction}
+              >
+                New transaction
+              </button>
+            </div>
           </div>
+          {importError && (
+            <div className="alert alert-error alert-soft text-sm">
+              <span>{importError}</span>
+            </div>
+          )}
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleCsvSelected}
+          />
         </div>
       </section>
 
@@ -661,6 +961,38 @@ export default function TransactionSection({ group }: { group: Group }) {
             setSplitEditor(null);
           }}
           onSave={saveAdvancedSplit}
+        />
+      )}
+
+      {importState && (
+        <CsvImportModal
+          fileName={importState.fileName}
+          parsed={importState.parsed}
+          mapping={importState.mapping}
+          previewRows={sanitizedRows}
+          validCount={sanitizedRows.length}
+          invalidCount={Math.max(0, mappedRows.length - sanitizedRows.length)}
+          isImporting={importingCsv}
+          onChangeMapping={(field, column) =>
+            setImportState((prev) => {
+              if (!prev) {
+                return prev;
+              }
+
+              return {
+                ...prev,
+                mapping: {
+                  ...prev.mapping,
+                  [field]: column,
+                },
+              };
+            })
+          }
+          onCancel={() => {
+            setImportState(null);
+            setImportError(null);
+          }}
+          onImport={handleImport}
         />
       )}
     </>

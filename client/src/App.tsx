@@ -1,6 +1,17 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApiCall } from "./api";
+import {
+  autoMatchMapping,
+  csvImportFields,
+  importFieldLabel,
+  parseCsvContent,
+  sanitizeMappedRows,
+  toMappedRows,
+  type CsvColumnMapping,
+  type CsvImportField,
+  type ParsedCsvFile,
+} from "./utils/csvImport";
 
 type PageView = "dashboard" | "profile";
 type SplitType = "equal" | "amount" | "percent";
@@ -155,6 +166,38 @@ function splitWeights(
   return weights;
 }
 
+function getReimbursementRecipientId(
+  transaction: Transaction,
+  memberSet: Set<string>,
+): string | null {
+  if (transaction.amount >= 0) {
+    return null;
+  }
+
+  const includedMemberIds = transaction.splitData.includedMemberIds.filter(
+    (memberId) => memberSet.has(memberId),
+  );
+  if (includedMemberIds.length !== 2) {
+    return null;
+  }
+
+  if (!includedMemberIds.includes(transaction.paidById)) {
+    return null;
+  }
+
+  const recipientId =
+    includedMemberIds.find((memberId) => memberId !== transaction.paidById) ||
+    null;
+  if (!recipientId) {
+    return null;
+  }
+
+  const payerWeight = transaction.splitData.values[transaction.paidById] ?? 0;
+  const recipientWeight = transaction.splitData.values[recipientId] ?? 0;
+
+  return payerWeight > 0 && recipientWeight <= 0 ? recipientId : null;
+}
+
 function buildGroupExpenseSummary(
   members: GroupMember[],
   transactions: Transaction[],
@@ -173,7 +216,30 @@ function buildGroupExpenseSummary(
 
   transactions.forEach((transaction) => {
     const amount = Number(toDisplayAmount(transaction) || 0);
-    if (amount <= 0) {
+    if (amount === 0) {
+      return;
+    }
+
+    const reimbursementRecipientId = getReimbursementRecipientId(
+      transaction,
+      memberSet,
+    );
+    if (reimbursementRecipientId) {
+      const transferAmount = Math.abs(amount);
+      const payer = balances.get(transaction.paidById);
+      if (payer) {
+        payer.paid += transferAmount;
+      }
+
+      const recipient = balances.get(reimbursementRecipientId);
+      if (recipient) {
+        recipient.owed += transferAmount;
+      }
+
+      return;
+    }
+
+    if (amount < 0) {
       return;
     }
 
@@ -223,11 +289,11 @@ function buildGroupExpenseSummary(
   });
 
   const creditors = normalizedBalances
-    .filter((balance) => balance.net > 0.009)
+    .filter((balance) => balance.net > 0.01)
     .map((balance) => ({ ...balance }))
     .sort((a, b) => b.net - a.net);
   const debtors = normalizedBalances
-    .filter((balance) => balance.net < -0.009)
+    .filter((balance) => balance.net < -0.01)
     .map((balance) => ({ ...balance, net: Math.abs(balance.net) }))
     .sort((a, b) => b.net - a.net);
 
@@ -240,7 +306,7 @@ function buildGroupExpenseSummary(
     const debtor = debtors[debtorIndex];
     const amount = roundCurrency(Math.min(creditor.net, debtor.net));
 
-    if (amount > 0.009) {
+    if (amount > 0.01) {
       settlements.push({
         fromMemberId: debtor.memberId,
         toMemberId: creditor.memberId,
@@ -251,10 +317,10 @@ function buildGroupExpenseSummary(
     creditor.net = roundCurrency(creditor.net - amount);
     debtor.net = roundCurrency(debtor.net - amount);
 
-    if (creditor.net <= 0.009) {
+    if (creditor.net <= 0.01) {
       creditorIndex += 1;
     }
-    if (debtor.net <= 0.009) {
+    if (debtor.net <= 0.01) {
       debtorIndex += 1;
     }
   }
@@ -290,6 +356,7 @@ function getGroupIdFromPath() {
 
 function setGroupIdInPath(groupId: string | null) {
   const url = new URL(window.location.href);
+  url.searchParams.delete("group");
 
   if (groupId) {
     url.pathname = `/groups/${encodeURIComponent(routeGroupId(groupId))}`;
@@ -316,6 +383,19 @@ function createDefaultSplitData(memberIds: string[]): SplitData {
   return {
     includedMemberIds: memberIds,
     values: Object.fromEntries(memberIds.map((id) => [id, 0])),
+  };
+}
+
+function createReimbursementSplitData(
+  memberIds: string[],
+  payerId: string,
+  recipientId: string,
+): SplitData {
+  return {
+    includedMemberIds: [payerId, recipientId],
+    values: Object.fromEntries(
+      memberIds.map((id) => [id, id === payerId ? 100 : 0]),
+    ),
   };
 }
 
@@ -429,11 +509,164 @@ function summarizeTransaction(transaction: Transaction) {
   };
 }
 
+function CsvImportModal({
+  fileName,
+  parsed,
+  mapping,
+  previewRows,
+  validCount,
+  invalidCount,
+  selectedCurrency,
+  currencies,
+  isImporting,
+  onChangeMapping,
+  onCurrencyChange,
+  onCancel,
+  onImport,
+}: {
+  fileName: string;
+  parsed: ParsedCsvFile;
+  mapping: CsvColumnMapping;
+  previewRows: Array<{
+    amount: number;
+    name: string;
+    description: string;
+    transactionDate: string;
+    category: string;
+    paidById: string;
+  }>;
+  validCount: number;
+  invalidCount: number;
+  selectedCurrency: string;
+  currencies: string[];
+  isImporting: boolean;
+  onChangeMapping: (field: CsvImportField, column: string) => void;
+  onCurrencyChange: (currency: string) => void;
+  onCancel: () => void;
+  onImport: () => void;
+}) {
+  return (
+    <dialog className="modal modal-open">
+      <div className="modal-box max-w-5xl">
+        <h3 className="font-semibold text-lg">Import transactions from CSV</h3>
+        <p className="text-sm text-base-content/70 mt-1">
+          {fileName} • {parsed.rows.length} row(s) detected
+        </p>
+
+        <fieldset className="fieldset mt-3 max-w-xs">
+          <legend className="fieldset-legend">Import currency</legend>
+          <select
+            className="select select-sm w-full"
+            value={selectedCurrency}
+            onChange={(event) => onCurrencyChange(event.target.value)}
+          >
+            {currencies.map((currency) => (
+              <option key={currency} value={currency}>
+                {currency}
+              </option>
+            ))}
+          </select>
+        </fieldset>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="card card-border bg-base-100">
+            <div className="card-body p-4 gap-3">
+              <h4 className="font-semibold">Field mapping</h4>
+              <p className="text-xs text-base-content/70">
+                Adjust how CSV columns map to app fields. This mapping will be
+                saved as your default for next imports.
+              </p>
+              <div className="flex flex-col gap-2">
+                {csvImportFields.map((field) => (
+                  <label key={field} className="fieldset">
+                    <legend className="fieldset-legend">
+                      {importFieldLabel(field)}
+                    </legend>
+                    <select
+                      className="select select-sm w-full"
+                      value={mapping[field]}
+                      onChange={(event) =>
+                        onChangeMapping(field, event.target.value)
+                      }
+                    >
+                      <option value="">Not mapped</option>
+                      {parsed.headers.map((header) => (
+                        <option key={header} value={header}>
+                          {header}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="card card-border bg-base-100">
+            <div className="card-body p-4 gap-3">
+              <h4 className="font-semibold">Sanitized preview</h4>
+              <p className="text-xs text-base-content/70">
+                {validCount} valid row(s) ready, {invalidCount} row(s) skipped.
+              </p>
+              <div className="overflow-x-auto rounded-md border border-base-300">
+                <table className="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Amount</th>
+                      <th>Name</th>
+                      <th>Date</th>
+                      <th>Category</th>
+                      <th>Paid by</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.slice(0, 6).map((row, index) => (
+                      <tr key={`${row.name}-${index}`}>
+                        <td>{row.amount.toFixed(2)}</td>
+                        <td>{row.name}</td>
+                        <td>{row.transactionDate}</td>
+                        <td>{row.category || "-"}</td>
+                        <td>{row.paidById || "-"}</td>
+                      </tr>
+                    ))}
+                    {previewRows.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="text-center text-sm">
+                          No valid rows to import with current mapping.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-action">
+          <button type="button" className="btn btn-sm" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            disabled={isImporting || validCount === 0}
+            onClick={onImport}
+          >
+            {isImporting ? "Importing..." : "Import"}
+          </button>
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
 function App() {
   const { loginWithRedirect, logout, isAuthenticated, isLoading, user } =
     useAuth0();
   const apiCall = useApiCall();
   const saveTimersRef = useRef<Record<string, number>>({});
+  const csvInputRef = useRef<HTMLInputElement | null>(null);
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -485,6 +718,20 @@ function App() {
     Record<string, number>
   >({});
   const [focusedFieldKey, setFocusedFieldKey] = useState<string | null>(null);
+  const [savedImportMapping, setSavedImportMapping] =
+    useState<Partial<CsvColumnMapping> | null>(null);
+  const [importState, setImportState] = useState<{
+    fileName: string;
+    parsed: ParsedCsvFile;
+    mapping: CsvColumnMapping;
+  } | null>(null);
+  const [importCurrency, setImportCurrency] = useState("USD");
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    transactionId: string;
+    transactionName: string;
+  } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importingCsv, setImportingCsv] = useState(false);
 
   const selectedGroup =
     groups.find((group) => group.id === selectedGroupId) ?? groups[0] ?? null;
@@ -537,6 +784,17 @@ function App() {
           )
         : null,
     [selectedGroup, transactions, displayAmountsByTransactionId],
+  );
+  const mappedRows = useMemo(() => {
+    if (!importState) {
+      return [];
+    }
+
+    return toMappedRows(importState.parsed, importState.mapping);
+  }, [importState]);
+  const sanitizedRows = useMemo(
+    () => sanitizeMappedRows(mappedRows),
+    [mappedRows],
   );
 
   const clearTransactionTimer = (transactionId: string) => {
@@ -650,6 +908,19 @@ function App() {
     }
   };
 
+  const fetchImportMapping = async () => {
+    try {
+      const data = await apiCall("/api/spendings/import-mapping");
+      const nextMapping =
+        data.mapping && typeof data.mapping === "object"
+          ? (data.mapping as Partial<CsvColumnMapping>)
+          : null;
+      setSavedImportMapping(nextMapping);
+    } catch (error) {
+      console.error("[transactions] import mapping fetch failed", error);
+    }
+  };
+
   const fetchTransactions = async (group: Group) => {
     try {
       setLoadingData(true);
@@ -740,7 +1011,11 @@ function App() {
       try {
         console.debug("[app] ensuring user exists via /api/auth/login");
         await apiCall("/api/auth/login", { method: "POST" });
-        await Promise.all([fetchProfile(), fetchGroups()]);
+        await Promise.all([
+          fetchProfile(),
+          fetchGroups(),
+          fetchImportMapping(),
+        ]);
       } catch (error) {
         console.error("Failed to initialize app:", error);
       }
@@ -1050,6 +1325,72 @@ function App() {
     }, 350);
   };
 
+  const recordReimbursement = async (
+    fromMemberId: string,
+    toMemberId: string,
+    amount: number,
+  ) => {
+    if (!selectedGroup) {
+      return;
+    }
+
+    const memberIds = selectedGroup.members.map((member) => member.id);
+    const dateStr = getDateInputValue();
+
+    const reimbursementTransaction: Transaction = {
+      id: `draft_${Date.now()}`,
+      batchId: selectedGroup.id,
+      amount: -amount,
+      currency: displayCurrency,
+      name: "Reimbursement",
+      description: "",
+      transactionDate: dateStr,
+      category: "",
+      paidById: fromMemberId,
+      splitType: "percent",
+      splitData: createReimbursementSplitData(
+        memberIds,
+        fromMemberId,
+        toMemberId,
+      ),
+    };
+
+    console.info("[transactions] record reimbursement", {
+      fromMemberId,
+      toMemberId,
+      amount,
+      transaction: summarizeTransaction(reimbursementTransaction),
+    });
+
+    await persistTransaction(reimbursementTransaction, "create");
+  };
+
+  const deleteTransaction = async (transactionId: string) => {
+    console.info("[transactions] delete start", { transactionId });
+
+    setSavingTransactions((prev) => ({ ...prev, [transactionId]: true }));
+
+    try {
+      await apiCall(`/api/spendings/${transactionId}`, {
+        method: "DELETE",
+      });
+
+      setTransactions((prev) =>
+        prev.filter((transaction) => transaction.id !== transactionId),
+      );
+
+      console.info("[transactions] delete success", { transactionId });
+    } catch (error) {
+      console.error("[transactions] delete failed", {
+        transactionId,
+        error,
+      });
+    } finally {
+      setSavingTransactions((prev) => ({ ...prev, [transactionId]: false }));
+      setDeleteConfirmation(null);
+    }
+  };
+
   const updateTransaction = (
     transactionId: string,
     updater: (transaction: Transaction) => Transaction,
@@ -1114,6 +1455,109 @@ function App() {
     });
 
     await persistTransaction(transaction, "create");
+  };
+
+  const openCsvPicker = () => {
+    setImportError(null);
+    csvInputRef.current?.click();
+  };
+
+  const handleCsvSelected = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const content = await file.text();
+      const parsed = parseCsvContent(content);
+
+      if (parsed.headers.length === 0 || parsed.rows.length === 0) {
+        setImportError("CSV is empty or has an invalid format.");
+        return;
+      }
+
+      const mapping = autoMatchMapping(parsed.headers, savedImportMapping);
+      setImportState({
+        fileName: file.name,
+        parsed,
+        mapping,
+      });
+      setImportCurrency(displayCurrency);
+      setImportError(null);
+    } catch (error) {
+      console.error("[transactions] csv parse failed", error);
+      setImportError("Failed to parse the CSV file.");
+    }
+  };
+
+  const handleImportCsv = async () => {
+    if (!selectedGroup || !importState) {
+      return;
+    }
+
+    if (!importState.mapping.amount) {
+      setImportError("The Amount field must be mapped before import.");
+      return;
+    }
+
+    if (sanitizedRows.length === 0) {
+      setImportError("No valid rows were found after sanitization.");
+      return;
+    }
+
+    try {
+      setImportingCsv(true);
+      setImportError(null);
+
+      const importedResult = await apiCall("/api/spendings/import", {
+        method: "POST",
+        body: JSON.stringify({
+          batchId: selectedGroup.id,
+          rows: sanitizedRows,
+          currency: importCurrency,
+        }),
+      });
+
+      try {
+        await apiCall("/api/spendings/import-mapping", {
+          method: "PUT",
+          body: JSON.stringify({ mapping: importState.mapping }),
+        });
+        setSavedImportMapping(importState.mapping);
+      } catch (error) {
+        console.error("[transactions] import mapping save failed", error);
+      }
+
+      const imported = ((importedResult.imported || []) as any[]).map((row) =>
+        normalizeTransaction(row, selectedGroup),
+      );
+
+      setTransactions((prev) => {
+        const existing = new Set(prev.map((item) => item.id));
+        const deduped = imported.filter((item) => !existing.has(item.id));
+        return [...deduped, ...prev];
+      });
+
+      imported.forEach((item) => {
+        if (item.category && !categories.includes(item.category)) {
+          setCategories((prev) => [...prev, item.category].sort());
+        }
+      });
+
+      setImportState(null);
+    } catch (error) {
+      console.error("[transactions] csv import failed", error);
+      setImportError(
+        error instanceof Error ? error.message : "Failed to import CSV.",
+      );
+    } finally {
+      setImportingCsv(false);
+    }
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -1252,8 +1696,8 @@ function App() {
 
   return (
     <div className="min-h-screen bg-base-200">
-      <header className="navbar sticky top-0 z-30 bg-base-100 border-b border-base-300 px-4 md:px-6">
-        <div className="mx-auto flex w-full max-w-[110rem] justify-between gap-3">
+      <header className="navbar sticky top-0 z-30 bg-base-100 border-b border-base-300">
+        <div className="mx-auto flex w-full max-w-[110rem] px-4 md:px-6 justify-between gap-3">
           <button
             type="button"
             className="text-base md:text-lg font-semibold"
@@ -1424,7 +1868,7 @@ function App() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[110rem] p-3 md:p-4">
+      <main className="mx-auto w-full max-w-[110rem] py-4 px-4 md:px-6">
         {isAuthenticated ? (
           <div className="flex flex-col gap-3">
             {showGroupForm ? (
@@ -1562,9 +2006,9 @@ function App() {
                               );
                               const net = balance?.net ?? 0;
                               const tone =
-                                net > 0.009
+                                net > 0.01
                                   ? "text-success"
-                                  : net < -0.009
+                                  : net < -0.01
                                     ? "text-warning"
                                     : "text-base-content/70";
 
@@ -1578,9 +2022,9 @@ function App() {
                                     <span
                                       className={`${tone} text-sm font-medium`}
                                     >
-                                      {net > 0.009
+                                      {net > 0.01
                                         ? `is owed ${currencyLabel(net, displayCurrency)}`
-                                        : net < -0.009
+                                        : net < -0.01
                                           ? `owes ${currencyLabel(Math.abs(net), displayCurrency)}`
                                           : "settled"}
                                     </span>
@@ -1618,30 +2062,45 @@ function App() {
                                     return (
                                       <div
                                         key={`${step.fromMemberId}-${step.toMemberId}-${index}`}
-                                        className="flex flex-wrap items-center gap-2 text-sm"
+                                        className="flex flex-wrap items-center justify-between gap-2 text-sm"
                                       >
-                                        {from ? (
-                                          <MemberIdentity member={from} />
-                                        ) : (
-                                          <span>Unknown</span>
-                                        )}
-                                        <span className="text-base-content/70">
-                                          pays
-                                        </span>
-                                        <span className="font-semibold">
-                                          {currencyLabel(
-                                            step.amount,
-                                            displayCurrency,
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          {from ? (
+                                            <MemberIdentity member={from} />
+                                          ) : (
+                                            <span>Unknown</span>
                                           )}
-                                        </span>
-                                        <span className="text-base-content/70">
-                                          to
-                                        </span>
-                                        {to ? (
-                                          <MemberIdentity member={to} />
-                                        ) : (
-                                          <span>Unknown</span>
-                                        )}
+                                          <span className="text-base-content/70">
+                                            pays
+                                          </span>
+                                          <span className="font-semibold">
+                                            {currencyLabel(
+                                              step.amount,
+                                              displayCurrency,
+                                            )}
+                                          </span>
+                                          <span className="text-base-content/70">
+                                            to
+                                          </span>
+                                          {to ? (
+                                            <MemberIdentity member={to} />
+                                          ) : (
+                                            <span>Unknown</span>
+                                          )}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-primary"
+                                          onClick={() =>
+                                            recordReimbursement(
+                                              step.fromMemberId,
+                                              step.toMemberId,
+                                              step.amount,
+                                            )
+                                          }
+                                        >
+                                          Record
+                                        </button>
                                       </div>
                                     );
                                   },
@@ -1669,10 +2128,31 @@ function App() {
                               table.
                             </p>
                           </div>
-                          <span className="badge badge-soft badge-neutral">
-                            {transactions.length} total
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={openCsvPicker}
+                            >
+                              Import CSV
+                            </button>
+                            <span className="badge badge-soft badge-neutral">
+                              {transactions.length} total
+                            </span>
+                          </div>
                         </div>
+                        {importError && (
+                          <div className="alert alert-error alert-soft text-sm">
+                            <span>{importError}</span>
+                          </div>
+                        )}
+                        <input
+                          ref={csvInputRef}
+                          type="file"
+                          accept=".csv,text/csv"
+                          className="hidden"
+                          onChange={handleCsvSelected}
+                        />
 
                         {loadingData ? (
                           <div className="flex justify-center py-4">
@@ -1692,6 +2172,7 @@ function App() {
                                   <th className="min-w-40">Category</th>
                                   <th className="min-w-72">Description</th>
                                   <th className="w-24">Status</th>
+                                  <th className="w-20">Actions</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -1981,6 +2462,20 @@ function App() {
                                           </span>
                                         )}
                                       </td>
+                                      <td>
+                                        <button
+                                          type="button"
+                                          className="btn btn-xs btn-ghost text-error"
+                                          onClick={() =>
+                                            setDeleteConfirmation({
+                                              transactionId: transaction.id,
+                                              transactionName: transaction.name,
+                                            })
+                                          }
+                                        >
+                                          Delete
+                                        </button>
+                                      </td>
                                     </tr>
                                   );
                                 })}
@@ -2258,6 +2753,81 @@ function App() {
               </button>
             </div>
           </div>
+        </dialog>
+      )}
+
+      {importState && (
+        <CsvImportModal
+          fileName={importState.fileName}
+          parsed={importState.parsed}
+          mapping={importState.mapping}
+          previewRows={sanitizedRows}
+          validCount={sanitizedRows.length}
+          invalidCount={Math.max(0, mappedRows.length - sanitizedRows.length)}
+          selectedCurrency={importCurrency}
+          currencies={supportedCurrencies}
+          isImporting={importingCsv}
+          onChangeMapping={(field, column) =>
+            setImportState((prev) => {
+              if (!prev) {
+                return prev;
+              }
+
+              return {
+                ...prev,
+                mapping: {
+                  ...prev.mapping,
+                  [field]: column,
+                },
+              };
+            })
+          }
+          onCurrencyChange={(currency) =>
+            setImportCurrency(normalizeCurrency(currency))
+          }
+          onCancel={() => {
+            setImportState(null);
+            setImportError(null);
+          }}
+          onImport={handleImportCsv}
+        />
+      )}
+
+      {deleteConfirmation && (
+        <dialog className="modal modal-open">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg">Delete transaction?</h3>
+            <p className="py-4 text-sm">
+              Are you sure you want to delete "
+              {deleteConfirmation.transactionName}"? This action cannot be
+              undone.
+            </p>
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setDeleteConfirmation(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-error"
+                onClick={() =>
+                  deleteTransaction(deleteConfirmation.transactionId)
+                }
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+          <form
+            method="dialog"
+            className="modal-backdrop"
+            onClick={() => setDeleteConfirmation(null)}
+          >
+            <button>close</button>
+          </form>
         </dialog>
       )}
     </div>

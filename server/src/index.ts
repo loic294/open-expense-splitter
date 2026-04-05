@@ -258,6 +258,151 @@ function summarizeSpendingRecord(spending: any) {
   };
 }
 
+type CsvImportField =
+  | "amount"
+  | "name"
+  | "description"
+  | "transactionDate"
+  | "category"
+  | "paidById";
+
+type CsvMapping = Partial<Record<CsvImportField, string>>;
+
+type CsvImportRow = Partial<
+  Record<CsvImportField, string | number | null | undefined>
+>;
+
+function sanitizeTextValue(value: unknown, maxLength = 200): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return trimmed.slice(0, maxLength);
+}
+
+function sanitizeAmountValue(value: unknown): number | null {
+  if (typeof value === "number") {
+    if (Number.isFinite(value)) {
+      return Math.round(Math.abs(value) * 100) / 100;
+    }
+
+    return null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const cleaned = value
+    .replace(/\s+/g, "")
+    .replace(/,/g, ".")
+    .replace(/[^0-9.-]/g, "");
+
+  if (!cleaned || cleaned === "." || cleaned === "-" || cleaned === "-.") {
+    return null;
+  }
+
+  const parsed = Number(cleaned);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return Math.round(Math.abs(parsed) * 100) / 100;
+}
+
+function sanitizeDateValue(value: unknown): string {
+  if (typeof value !== "string") {
+    return new Date().toISOString();
+  }
+
+  const raw = value.trim();
+  if (!raw) {
+    return new Date().toISOString();
+  }
+
+  const directDate = new Date(raw);
+  if (!Number.isNaN(directDate.getTime())) {
+    return directDate.toISOString();
+  }
+
+  const match = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (match) {
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3]);
+    const fallback = new Date(Date.UTC(year, month - 1, day));
+    if (!Number.isNaN(fallback.getTime())) {
+      return fallback.toISOString();
+    }
+  }
+
+  return new Date().toISOString();
+}
+
+function normalizeIdentifier(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function resolvePaidById(
+  value: unknown,
+  members: Array<{ id: string; email: string; name: string | null }>,
+  fallbackUserId: string,
+): string {
+  if (typeof value !== "string" || !value.trim()) {
+    return members[0]?.id || fallbackUserId;
+  }
+
+  const normalized = normalizeIdentifier(value);
+  const matched = members.find((member) => {
+    const name = member.name ? normalizeIdentifier(member.name) : "";
+    return (
+      normalizeIdentifier(member.id) === normalized ||
+      normalizeIdentifier(member.email) === normalized ||
+      (name && name === normalized)
+    );
+  });
+
+  return matched?.id || members[0]?.id || fallbackUserId;
+}
+
+function sanitizeImportRow(
+  row: CsvImportRow,
+  members: Array<{ id: string; email: string; name: string | null }>,
+  fallbackUserId: string,
+): {
+  amount: number;
+  name: string;
+  details: string;
+  transactionDate: string;
+  category: string | null;
+  paidById: string;
+} | null {
+  const amount = sanitizeAmountValue(row.amount);
+  if (amount === null) {
+    return null;
+  }
+
+  const name = sanitizeTextValue(row.name, 120) || "Imported transaction";
+  const details = sanitizeTextValue(row.description, 300);
+  const transactionDate = sanitizeDateValue(row.transactionDate);
+  const category = sanitizeTextValue(row.category, 80) || null;
+  const paidById = resolvePaidById(row.paidById, members, fallbackUserId);
+
+  return {
+    amount,
+    name,
+    details,
+    transactionDate,
+    category,
+    paidById,
+  };
+}
+
 function getSpendingsForBatch(batchId: string) {
   const spendings = db
     .prepare(
@@ -556,6 +701,192 @@ app.get("/api/spendings", (c) => {
   }
 });
 
+app.get("/api/spendings/import-mapping", (c) => {
+  try {
+    const auth = requireAuth(c);
+    const userId = getUserIdFromSub(auth.sub);
+
+    const row = db
+      .prepare(
+        `
+      SELECT mapping_json
+      FROM user_csv_mappings
+      WHERE user_id = ?
+      LIMIT 1
+    `,
+      )
+      .get(userId) as { mapping_json: string } | undefined;
+
+    let mapping: CsvMapping = {};
+    if (row?.mapping_json) {
+      try {
+        const parsed = JSON.parse(row.mapping_json) as CsvMapping;
+        if (parsed && typeof parsed === "object") {
+          mapping = parsed;
+        }
+      } catch {
+        mapping = {};
+      }
+    }
+
+    return c.json({ mapping });
+  } catch (error) {
+    console.error("[api:/api/spendings/import-mapping GET] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.put("/api/spendings/import-mapping", async (c) => {
+  try {
+    const auth = requireAuth(c);
+    const userId = getUserIdFromSub(auth.sub);
+    const body = (await c.req.json()) as { mapping?: unknown };
+    const mapping =
+      body.mapping && typeof body.mapping === "object"
+        ? (body.mapping as CsvMapping)
+        : {};
+
+    db.prepare(
+      `
+      INSERT INTO user_csv_mappings (id, user_id, mapping_json)
+      VALUES (?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        mapping_json = excluded.mapping_json,
+        updated_at = CURRENT_TIMESTAMP
+    `,
+    ).run(`csv_map_${randomUUID()}`, userId, JSON.stringify(mapping));
+
+    return c.json({ mapping });
+  } catch (error) {
+    console.error("[api:/api/spendings/import-mapping PUT] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.post("/api/spendings/import", async (c) => {
+  try {
+    const requestId = getRequestId(c);
+    const auth = requireAuth(c);
+    const userId = getUserIdFromSub(auth.sub);
+    const body = (await c.req.json()) as {
+      batchId?: string;
+      rows?: CsvImportRow[];
+      currency?: string;
+    };
+
+    if (!body.batchId) {
+      return c.json({ error: "batchId is required" }, 400);
+    }
+
+    if (!canAccessBatch(userId, body.batchId)) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+
+    const rows = Array.isArray(body.rows) ? body.rows : [];
+    if (rows.length === 0) {
+      return c.json({ error: "rows are required" }, 400);
+    }
+    const importCurrency = normalizeCurrency(body.currency);
+
+    const members = getBatchMembers(body.batchId);
+    const insertStmt = db.prepare(`
+      INSERT INTO spendings (
+        id,
+        user_id,
+        batch_id,
+        name,
+        details,
+        description,
+        amount,
+        category,
+        currency,
+        date,
+        paid_by_id,
+        split_type,
+        split_data
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertedIds: string[] = [];
+    let skipped = 0;
+
+    const insertTransaction = db.transaction(() => {
+      rows.forEach((row) => {
+        const sanitized = sanitizeImportRow(row, members, userId);
+        if (!sanitized) {
+          skipped += 1;
+          return;
+        }
+
+        const id = `spending_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        insertStmt.run(
+          id,
+          userId,
+          body.batchId,
+          sanitized.name,
+          sanitized.details || null,
+          sanitized.name,
+          sanitized.amount,
+          sanitized.category,
+          importCurrency,
+          sanitized.transactionDate,
+          sanitized.paidById,
+          "equal",
+          serializeSplitData(null),
+        );
+
+        insertedIds.push(id);
+      });
+    });
+
+    insertTransaction();
+
+    const imported = getSpendingsForBatch(body.batchId).filter((spending) =>
+      insertedIds.includes(spending.id),
+    );
+
+    console.debug("[api:%s] spendings.import completed", requestId, {
+      userId,
+      batchId: body.batchId,
+      rows: rows.length,
+      imported: imported.length,
+      skipped,
+      importCurrency,
+    });
+
+    return c.json({
+      imported,
+      importedCount: imported.length,
+      skippedCount: skipped,
+    });
+  } catch (error) {
+    console.error("[api:/api/spendings/import POST] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
 // Create spending record
 app.post("/api/spendings", async (c) => {
   try {
@@ -815,6 +1146,78 @@ app.patch("/api/spendings/:id", async (c) => {
     return c.json(updated);
   } catch (error) {
     console.error("[api:/api/spendings PATCH] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.delete("/api/spendings/:id", async (c) => {
+  try {
+    const requestId = getRequestId(c);
+    const auth = requireAuth(c);
+    const userId = getUserIdFromSub(auth.sub);
+    const spendingId = c.req.param("id");
+
+    console.debug("[api:%s] spendings.delete request", requestId, {
+      userId,
+      spendingId,
+    });
+
+    const existing = db
+      .prepare(
+        `
+      SELECT id, batch_id
+      FROM spendings
+      WHERE id = ?
+    `,
+      )
+      .get(spendingId) as { id: string; batch_id: string | null } | undefined;
+
+    if (!existing) {
+      console.warn("[api:%s] spendings.delete not found", requestId, {
+        spendingId,
+      });
+      return c.json({ error: "Transaction not found" }, 404);
+    }
+
+    const batchId = existing.batch_id;
+    if (!batchId) {
+      console.warn("[api:%s] spendings.delete missing batchId", requestId, {
+        spendingId,
+      });
+      return c.json({ error: "batchId is required" }, 400);
+    }
+
+    if (!canAccessBatch(userId, batchId)) {
+      console.warn("[api:%s] spendings.delete forbidden", requestId, {
+        userId,
+        spendingId,
+        batchId,
+      });
+      return c.json({ error: "Forbidden" }, 403);
+    }
+
+    const stmt = db.prepare(`
+      DELETE FROM spendings
+      WHERE id = ?
+    `);
+
+    const result = stmt.run(spendingId);
+
+    console.debug("[api:%s] spendings.delete completed", requestId, {
+      changes: result.changes,
+      spendingId,
+    });
+
+    return c.json({ id: spendingId, message: "Transaction deleted" }, 200);
+  } catch (error) {
+    console.error("[api:/api/spendings DELETE] failed:", error);
     return c.json(
       {
         error: isUnauthorizedError(error)
