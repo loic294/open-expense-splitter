@@ -6,12 +6,18 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "preview": "node dist/index.js"
+    "preview": "node dist/index.js",
+    "worker:dev": "wrangler dev src/worker.ts",
+    "worker:deploy": "wrangler deploy",
+    "d1:create": "wrangler d1 create batch-spending-splitter",
+    "d1:migrate:local": "wrangler d1 migrations apply batch-spending-splitter --local",
+    "d1:migrate:remote": "wrangler d1 migrations apply batch-spending-splitter --remote"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.12",
     "better-sqlite3": "^9.0.0",
     "hono": "^4.12.10",
+    "jose": "^5.0.0",
     "jsonwebtoken": "^9.0.0",
     "jwks-rsa": "^3.0.0"
   },
@@ -19,6 +25,7 @@
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^20.8.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.2.2"
+    "typescript": "^5.2.2",
+    "wrangler": "^3.0.0"
   }
 }

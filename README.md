@@ -147,6 +147,66 @@ docker compose up
 
 ---
 
+## Deploy to Cloudflare (optional)
+
+The backend can run as a **Cloudflare Worker** (using Cloudflare D1 for storage) and the frontend as a **Cloudflare Pages** site. The Docker / Node.js setup is not affected.
+
+### One-time setup
+
+```bash
+# 1. Create the D1 database and copy the database_id into server/wrangler.toml
+cd server
+npx wrangler d1 create batch-spending-splitter
+
+# 2. Apply the schema
+npx wrangler d1 migrations apply batch-spending-splitter --local   # local dev
+npx wrangler d1 migrations apply batch-spending-splitter --remote  # production
+
+# 3. Create the Cloudflare Pages project (only required once)
+npx wrangler pages project create batch-spending-splitter
+```
+
+Update `server/wrangler.toml` with the `database_id` from step 1 and set the correct `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, and `APP_BASE_URL` values.
+
+### Local development against D1
+
+```bash
+cd server
+npm run worker:dev   # starts wrangler dev with local D1 on http://localhost:8787
+```
+
+### Manual deploy
+
+```bash
+cd server && npm run worker:deploy                         # deploy the Worker
+cd client && npm run build && npx wrangler pages deploy dist --project-name=batch-spending-splitter
+```
+
+### Automated deploy (GitHub Actions)
+
+The [deploy-cloudflare workflow](.github/workflows/deploy-cloudflare.yml) runs on every push to `main` and:
+
+1. Applies any pending D1 migrations
+2. Deploys the Worker
+3. Builds the frontend and deploys it to Cloudflare Pages
+
+**Required repository secrets** (Settings → Secrets → Actions):
+
+| Secret                  | Description                                                  |
+| ----------------------- | ------------------------------------------------------------ |
+| `CLOUDFLARE_API_TOKEN`  | Cloudflare API token with Workers, D1, and Pages permissions |
+| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID                                   |
+
+**Required repository variables** (Settings → Variables → Actions):
+
+| Variable          | Description                                                                             |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| `AUTH0_DOMAIN`    | e.g. `yourapp.auth0.com`                                                                |
+| `AUTH0_CLIENT_ID` | Auth0 SPA client ID                                                                     |
+| `CF_WORKER_URL`   | Deployed Worker URL, e.g. `https://batch-spending-splitter-api.<subdomain>.workers.dev` |
+
+---
+
 ## Getting Started with Docker
 
 1. **Clone the repository and navigate to the project**:
