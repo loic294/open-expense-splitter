@@ -115,12 +115,15 @@ jobs:
 
           PROJECT_NAME="${CF_PAGES_PROJECT_NAME:-open-expense-splitter}"
 
-          echo "Checking Pages project '$PROJECT_NAME' in account '$CLOUDFLARE_ACCOUNT_ID'..."
-          if npx wrangler@4 pages project list --json | grep -q "\"name\":\"$PROJECT_NAME\""; then
-            echo "Pages project exists."
+          echo "Creating Pages project '$PROJECT_NAME' (skipping if it already exists)..."
+          CREATE_OUTPUT=$(npx wrangler@4 pages project create "$PROJECT_NAME" --production-branch=main 2>&1) && true
+          if echo "$CREATE_OUTPUT" | grep -q "already exists"; then
+            echo "Pages project already exists, continuing."
+          elif echo "$CREATE_OUTPUT" | grep -qi "error\|failed"; then
+            echo "$CREATE_OUTPUT"
+            exit 1
           else
-            echo "Pages project not found. Creating '$PROJECT_NAME'..."
-            npx wrangler@4 pages project create "$PROJECT_NAME" --production-branch=main
+            echo "$CREATE_OUTPUT"
           fi
 
       - name: Deploy to Cloudflare Pages
