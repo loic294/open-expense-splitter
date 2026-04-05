@@ -6,7 +6,7 @@
 
 ```bash
 git clone https://github.com/loic294/open-expense-splitter.git
-cd batch-spending-splitter
+cd open-expense-splitter
 ```
 
 ### 2. Create environment file
@@ -55,7 +55,7 @@ version: "3.8"
 
 services:
   frontend:
-    image: ghcr.io/loicba/batch-spending-splitter-client:latest
+    image: ghcr.io/loicba/open-expense-splitter-client:latest
     ports:
       - "5173:5173"
     environment:
@@ -66,7 +66,7 @@ services:
       - backend
 
   backend:
-    image: ghcr.io/loicba/batch-spending-splitter-server:latest
+    image: ghcr.io/loicba/open-expense-splitter-server:latest
     ports:
       - "3000:3000"
     environment:

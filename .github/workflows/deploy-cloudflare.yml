@@ -13,13 +13,13 @@ on:
 # Required repository variables (Settings → Variables → Actions):
 #   AUTH0_DOMAIN          — e.g. yourapp.auth0.com
 #   AUTH0_CLIENT_ID       — Auth0 SPA client ID
-#   CF_WORKER_URL         — URL of the deployed Worker, e.g. https://batch-spending-splitter-api.<subdomain>.workers.dev
+#   CF_WORKER_URL         — URL of the deployed Worker, e.g. https://open-expense-splitter-api.<subdomain>.workers.dev
 #
 # One-time setup (run locally before the first deploy):
 #   cd server
-#   npx wrangler d1 create batch-spending-splitter
+#   npx wrangler d1 create open-expense-splitter
 #   # Copy the database_id into server/wrangler.toml
-#   npx wrangler pages project create batch-spending-splitter
+#   npx wrangler pages project create open-expense-splitter
 
 jobs:
   deploy-worker:
@@ -47,7 +47,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: server
-          command: d1 migrations apply batch-spending-splitter --remote
+          command: d1 migrations apply open-expense-splitter --remote
 
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
@@ -88,4 +88,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: client
-          command: pages deploy dist --project-name=batch-spending-splitter
+          command: pages deploy dist --project-name=open-expense-splitter

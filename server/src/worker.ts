@@ -10,8 +10,8 @@
  * completely untouched and continues to work for local Docker development.
  *
  * Deploy:
- *   npx wrangler d1 create batch-spending-splitter
- *   npx wrangler d1 migrations apply batch-spending-splitter --remote
+ *   npx wrangler d1 create open-expense-splitter
+ *   npx wrangler d1 migrations apply open-expense-splitter --remote
  *   npx wrangler deploy
  */
 

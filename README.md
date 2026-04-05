@@ -16,7 +16,7 @@ A full-stack application for tracking and splitting spending across groups. Buil
 
 ```bash
 git clone https://github.com/loic294/open-expense-splitter.git
-cd batch-spending-splitter
+cd open-expense-splitter
 cp .env.example .env
 npm run dev
 ```

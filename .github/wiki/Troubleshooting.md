@@ -58,7 +58,7 @@ Delete the database file and restart:
 
 ```bash
 # Docker
-docker volume rm batch-spending-splitter_db_data
+docker volume rm open-expense-splitter_db_data
 npm run dev
 
 # Local development
@@ -197,7 +197,7 @@ kill -9 $(lsof -t -i :3000)
 **Solution**:
 
 1. Add data via app UI
-2. Or reset database: `docker volume rm batch-spending-splitter_db_data`
+2. Or reset database: `docker volume rm open-expense-splitter_db_data`
 
 ---
 
@@ -220,7 +220,7 @@ npx wrangler d1 list
 ```toml
 [[d1_databases]]
 binding = "DB"
-database_name = "batch-spending-splitter"
+database_name = "open-expense-splitter"
 database_id = "YOUR-DATABASE-ID"
 ```
 
@@ -233,7 +233,7 @@ database_id = "YOUR-DATABASE-ID"
 Check current migrations:
 
 ```bash
-npx wrangler d1 migrations list batch-spending-splitter --remote
+npx wrangler d1 migrations list open-expense-splitter --remote
 ```
 
 If migration is already applied, it won't run again (safe).

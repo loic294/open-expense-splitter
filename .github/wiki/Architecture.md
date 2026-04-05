@@ -3,7 +3,7 @@
 ## Project Structure
 
 ```
-batch-spending-splitter/
+open-expense-splitter/
 ├── client/                 # React 18 + Vite frontend
 │   ├── src/
 │   │   ├── App.tsx                    # Router & provider setup only

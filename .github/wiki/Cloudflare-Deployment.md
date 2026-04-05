@@ -17,7 +17,7 @@ See [Set up Auth0](https://github.com/loic294/open-expense-splitter/wiki/Install
 
 ```bash
 cd server
-npx wrangler d1 create batch-spending-splitter
+npx wrangler d1 create open-expense-splitter
 ```
 
 Copy the `database_id` from the output and add it to `server/wrangler.toml`:
@@ -25,7 +25,7 @@ Copy the `database_id` from the output and add it to `server/wrangler.toml`:
 ```toml
 [[d1_databases]]
 binding = "DB"
-database_name = "batch-spending-splitter"
+database_name = "open-expense-splitter"
 database_id = "YOUR-DATABASE-ID"
 ```
 
@@ -33,16 +33,16 @@ database_id = "YOUR-DATABASE-ID"
 
 ```bash
 # Local development
-npx wrangler d1 migrations apply batch-spending-splitter --local
+npx wrangler d1 migrations apply open-expense-splitter --local
 
 # Production
-npx wrangler d1 migrations apply batch-spending-splitter --remote
+npx wrangler d1 migrations apply open-expense-splitter --remote
 ```
 
 ### 3. Create Pages Project
 
 ```bash
-npx wrangler pages project create batch-spending-splitter
+npx wrangler pages project create open-expense-splitter
 ```
 
 ---
@@ -74,7 +74,7 @@ npm run worker:deploy
 ```bash
 cd client
 npm run build
-npx wrangler pages deploy dist --project-name=batch-spending-splitter
+npx wrangler pages deploy dist --project-name=open-expense-splitter
 ```
 
 ---
@@ -161,7 +161,7 @@ See [Environment Variables](Environment-Variables.md) for complete reference.
 Check D1 database is properly created:
 
 ```bash
-npx wrangler d1 info batch-spending-splitter
+npx wrangler d1 info open-expense-splitter
 ```
 
 ### Deploy Fails

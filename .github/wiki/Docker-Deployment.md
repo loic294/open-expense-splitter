@@ -8,7 +8,7 @@ Deploy using Docker and Docker Compose for a containerized setup.
 
 ```bash
 git clone https://github.com/loic294/open-expense-splitter.git
-cd batch-spending-splitter
+cd open-expense-splitter
 ```
 
 ### 2. Create `.env` file
@@ -57,7 +57,7 @@ version: "3.8"
 
 services:
   frontend:
-    image: ghcr.io/loicba/batch-spending-splitter-client:latest
+    image: ghcr.io/loicba/open-expense-splitter-client:latest
     ports:
       - "5173:5173"
     environment:
@@ -68,7 +68,7 @@ services:
       - backend
 
   backend:
-    image: ghcr.io/loicba/batch-spending-splitter-server:latest
+    image: ghcr.io/loicba/open-expense-splitter-server:latest
     ports:
       - "3000:3000"
     environment:
@@ -116,7 +116,7 @@ See [Environment Variables](Environment-Variables.md) for complete reference.
 SQLite database is stored in Docker volume `db_data`:
 
 - **Persists** across container restarts
-- **Deleted** with: `docker volume rm batch-spending-splitter_db_data` ⚠️
+- **Deleted** with: `docker volume rm open-expense-splitter_db_data` ⚠️
 
 ---
 

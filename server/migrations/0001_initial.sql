@@ -1,5 +1,5 @@
 -- Initial schema for Cloudflare D1
--- Apply with: npx wrangler d1 migrations apply batch-spending-splitter --remote
+-- Apply with: npx wrangler d1 migrations apply open-expense-splitter --remote
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
