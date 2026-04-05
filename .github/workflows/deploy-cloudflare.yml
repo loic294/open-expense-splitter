@@ -52,11 +52,29 @@ jobs:
           fi
           sed -i.bak "s/REPLACE_WITH_YOUR_D1_DATABASE_ID/$CF_D1_DATABASE_ID/g" wrangler.toml
 
-      - name: Validate D1 database configuration
+      - name: Inject Auth0 config into Wrangler config
+        env:
+          AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
+          AUTH0_CLIENT_ID: ${{ vars.AUTH0_CLIENT_ID }}
+        run: |
+          if [ -z "$AUTH0_DOMAIN" ] || [ -z "$AUTH0_CLIENT_ID" ]; then
+            echo "Error: Missing GitHub variables AUTH0_DOMAIN or AUTH0_CLIENT_ID"
+            echo "Set them in Settings -> Secrets and variables -> Actions -> Variables"
+            exit 1
+          fi
+          sed -i.bak "s|YOUR_AUTH0_DOMAIN.auth0.com|$AUTH0_DOMAIN|g" wrangler.toml
+          sed -i.bak "s|YOUR_AUTH0_CLIENT_ID|$AUTH0_CLIENT_ID|g" wrangler.toml
+
+      - name: Validate Wrangler config
         run: |
           if grep -q 'REPLACE_WITH_YOUR_D1_DATABASE_ID' wrangler.toml; then
             echo "Error: server/wrangler.toml still contains REPLACE_WITH_YOUR_D1_DATABASE_ID"
             echo "Set GitHub secret CF_D1_DATABASE_ID to your D1 UUID"
+            exit 1
+          fi
+          if grep -q 'YOUR_AUTH0_DOMAIN' wrangler.toml || grep -q 'YOUR_AUTH0_CLIENT_ID' wrangler.toml; then
+            echo "Error: server/wrangler.toml still contains Auth0 placeholder values"
+            echo "Set GitHub variables AUTH0_DOMAIN and AUTH0_CLIENT_ID"
             exit 1
           fi
 
