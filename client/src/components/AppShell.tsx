@@ -163,7 +163,9 @@ export default function AppShell() {
           <Outlet />
         </main>
 
-        <Footer />
+        <div className="p-4">
+          <Footer />
+        </div>
       </div>
     </NavbarActionsContext.Provider>
   );
