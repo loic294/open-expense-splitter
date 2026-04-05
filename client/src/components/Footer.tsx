@@ -20,6 +20,15 @@ export default function Footer() {
         >
           Contact
         </a>
+
+        <a
+          href="https://github.com/loicba/open-expense-splitter"
+          className="link link-hover"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          GitHub
+        </a>
       </nav>
 
       <div className="flex flex-row flex-end gap-2 text-xs">
@@ -33,16 +42,6 @@ export default function Footer() {
             rel="noopener noreferrer"
           >
             CC BY-NC 4.0
-          </a>
-        </p>
-        <p>
-          <a
-            href="https://github.com/loicba/batch-spending-splitter"
-            className="link link-hover"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            GitHub
           </a>
         </p>
       </div>

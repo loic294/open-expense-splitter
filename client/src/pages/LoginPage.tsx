@@ -350,6 +350,11 @@ export default function LoginPage() {
                   </tbody>
                 </table>
               </div>
+              <p className="text-xs text-base-content/50">
+                Splitwise, SettleUp, Tricount, SplitMyExpenses, and Splid are
+                trademarks of their respective owners. We do not own or claim
+                any rights to these trademarks.
+              </p>
             </div>
           </section>
 
