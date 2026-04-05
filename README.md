@@ -1,6 +1,6 @@
 # Open Expense Splitter
 
-A full-stack application for tracking and splitting spending across batches. Built with React + Vite on the frontend and Node.js + Hono on the backend, with SQLite for persistent data storage and Auth0 for user authentication.
+A full-stack application for tracking and splitting spending across groups. Built with React + Vite on the frontend and Node.js + Hono on the backend, with SQLite for persistent data storage and Auth0 for user authentication.
 
 ## Features
 
@@ -25,7 +25,15 @@ See **[Quick Start Wiki](https://github.com/loic294/open-expense-splitter/wiki/Q
 
 ## Deploy to Cloudflare
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/loic294/open-expense-splitter)
+See [Set up Auth0](https://github.com/loic294/open-expense-splitter/wiki/Installation) for required environment variables.
+
+### Deploy the backend
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/loic294/open-expense-splitter/tree/main/server)
+
+### Deploy the frontend
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/loic294/open-expense-splitter/tree/main/client)
 
 ## Documentation
 
