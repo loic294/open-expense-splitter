@@ -308,9 +308,11 @@ function CsvImportModal({
 export default function TransactionSection({
   group,
   onTransactionsChange,
+  externalTransaction,
 }: {
   group: Group;
   onTransactionsChange?: (transactions: Transaction[]) => void;
+  externalTransaction?: Transaction | null;
 }) {
   const apiCall = useApiCall();
   const navbarTarget = useNavbarActionsTarget();
@@ -346,6 +348,22 @@ export default function TransactionSection({
   useEffect(() => {
     onTransactionsChange?.(transactions);
   }, [transactions, onTransactionsChange]);
+
+  useEffect(() => {
+    if (!externalTransaction) {
+      return;
+    }
+
+    if (externalTransaction.batchId !== group.id) {
+      return;
+    }
+
+    setTransactions((prev) => {
+      const exists = prev.some((item) => item.id === externalTransaction.id);
+      return exists ? prev : [externalTransaction, ...prev];
+    });
+    addCategory(externalTransaction.category, setCategories);
+  }, [externalTransaction, group.id]);
 
   const activeSplitTransaction =
     transactions.find(
@@ -730,7 +748,7 @@ export default function TransactionSection({
           </div>,
           navbarTarget,
         )}
-      <section className="card card-border bg-base-100 rounded-md w-full">
+      <section className="card card-border bg-base-100 rounded-md w-full shadow-sm">
         <div className="card-body p-3 md:p-4 gap-3">
           <div className="flex items-center gap-2">
             <span className="text-xl">{group.emoji}</span>
@@ -756,7 +774,7 @@ export default function TransactionSection({
         </div>
       </section>
 
-      <section className="card card-border bg-base-100 rounded-md w-full">
+      <section className="card card-border bg-base-100 rounded-md w-full shadow-sm">
         <div className="card-body p-3 md:p-4 gap-3">
           <h2 className="card-title text-base">Transactions</h2>
           {loadingData ? (
@@ -802,7 +820,10 @@ export default function TransactionSection({
                           type="number"
                           step="0.01"
                           min="0"
-                          value={transaction.amount}
+                          value={
+                            transaction.amount === 0 ? "" : transaction.amount
+                          }
+                          placeholder="0.00"
                           onChange={(event) =>
                             updateTransaction(transaction.id, (item) => ({
                               ...item,

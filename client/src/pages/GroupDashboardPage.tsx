@@ -10,6 +10,8 @@ export default function GroupDashboardPage() {
   const { bootstrapping, getGroupById } = useAppData();
   const group = getGroupById(groupId);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [externalTransaction, setExternalTransaction] =
+    useState<Transaction | null>(null);
 
   if (bootstrapping) {
     return (
@@ -28,13 +30,15 @@ export default function GroupDashboardPage() {
       <GroupSummaryCard
         group={group}
         transactions={transactions}
-        onReimbursementRecorded={(transaction) =>
-          setTransactions((prev) => [transaction, ...prev])
-        }
+        onReimbursementRecorded={(transaction) => {
+          setTransactions((prev) => [transaction, ...prev]);
+          setExternalTransaction(transaction);
+        }}
       />
       <TransactionSection
         group={group}
         onTransactionsChange={setTransactions}
+        externalTransaction={externalTransaction}
       />
     </div>
   );

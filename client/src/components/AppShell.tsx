@@ -31,7 +31,7 @@ export default function AppShell() {
   return (
     <NavbarActionsContext.Provider value={navbarActionsEl}>
       <div className="min-h-screen bg-base-200">
-        <header className="navbar bg-base-100 border-b border-base-300 px-4 md:px-6 sticky top-0 z-10">
+        <header className="navbar bg-base-100 border-b border-base-300 px-4 md:px-6 sticky top-0 z-10 shadow-sm">
           <div className="w-full flex justify-between gap-3">
             <button
               type="button"

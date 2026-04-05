@@ -281,7 +281,7 @@ export default function GroupSummaryCard({
           </div>,
           navbarTarget,
         )}
-      <section className="card card-border rounded-md bg-base-100 w-full">
+      <section className="card card-border rounded-md bg-base-100 w-full shadow-sm">
         <div className="card-body gap-3 p-3 md:p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="card-title text-base">Group summary</h2>
