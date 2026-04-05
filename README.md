@@ -1,6 +1,6 @@
 # Open Expense Splitter
 
-A full-stack application for tracking and splitting spending across groups. Built with React + Vite on the frontend and Node.js + Hono on the backend, with SQLite for persistent data storage and Auth0 for user authentication.
+A full-stack application for tracking and splitting spending across groups. Built with React + Vite on the frontend and Node.js + Hono on the backend, with SQLite for persistent data storage and Auth0 for user authentication. Supports deployment to Cloudflare Workers and D1 databases.
 
 ## Features
 
