@@ -7,12 +7,19 @@ import GroupEditPage from "./pages/GroupEditPage";
 import GroupInviteConfirmPage from "./pages/GroupInviteConfirmPage";
 import HomeRedirectPage from "./pages/HomeRedirectPage";
 import PlatformInviteConfirmPage from "./pages/PlatformInviteConfirmPage";
+import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
 import ProfilePage from "./pages/ProfilePage";
+import TermsOfServicePage from "./pages/TermsOfServicePage";
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public routes */}
+        <Route path="/terms" element={<TermsOfServicePage />} />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
+
+        {/* Protected routes */}
         <Route element={<AuthGuard />}>
           <Route element={<ProtectedAppLayout />}>
             <Route path="/" element={<HomeRedirectPage />} />

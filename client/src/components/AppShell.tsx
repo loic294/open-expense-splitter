@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAppData } from "../context/AppDataContext";
 import NavbarActionsContext from "../context/NavbarActionsContext";
+import Footer from "./Footer";
 
 export default function AppShell() {
   const { logout, user } = useAuth0();
@@ -28,7 +29,7 @@ export default function AppShell() {
 
   return (
     <NavbarActionsContext.Provider value={navbarActionsEl}>
-      <div className="min-h-screen bg-base-200">
+      <div className="flex flex-col min-h-screen bg-base-200">
         <header className="navbar bg-base-100 border-b border-base-300 px-4 md:px-6 sticky top-0 z-10 shadow-sm">
           <div className="w-full flex justify-between gap-3">
             <button
@@ -152,9 +153,11 @@ export default function AppShell() {
           </div>
         </header>
 
-        <main className="w-full p-3 md:p-4">
+        <main className="w-full p-3 md:p-4 flex-1">
           <Outlet />
         </main>
+
+        <Footer />
       </div>
     </NavbarActionsContext.Provider>
   );
