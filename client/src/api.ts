@@ -103,7 +103,8 @@ export function useApiCall() {
         token = claims?.__raw ?? null;
         if (token) {
           const parts = token.split(".");
-          const payload = JSON.parse(atob(parts[1]));
+          const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+          const payload = JSON.parse(atob(b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), "=")));
           console.debug("[auth] ID token payload:", {
             iss: payload.iss,
             aud: payload.aud,

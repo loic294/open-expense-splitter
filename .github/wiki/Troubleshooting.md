@@ -212,7 +212,7 @@ kill -9 $(lsof -t -i :3000)
 1. Check database exists:
 
 ```bash
-npx wrangler d1 list
+npx wrangler@4 d1 list
 ```
 
 2. Update `server/wrangler.toml`:
@@ -233,7 +233,7 @@ database_id = "YOUR-DATABASE-ID"
 Check current migrations:
 
 ```bash
-npx wrangler d1 migrations list open-expense-splitter --remote
+npx wrangler@4 d1 migrations list open-expense-splitter --remote
 ```
 
 If migration is already applied, it won't run again (safe).

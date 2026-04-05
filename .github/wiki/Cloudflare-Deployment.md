@@ -17,7 +17,7 @@ See [Set up Auth0](https://github.com/loic294/open-expense-splitter/wiki/Install
 
 ```bash
 cd server
-npx wrangler d1 create open-expense-splitter
+npx wrangler@4 d1 create open-expense-splitter
 ```
 
 Copy the `database_id` from the output and add it to `server/wrangler.toml`:
@@ -33,16 +33,16 @@ database_id = "YOUR-DATABASE-ID"
 
 ```bash
 # Local development
-npx wrangler d1 migrations apply open-expense-splitter --local
+npx wrangler@4 d1 migrations apply open-expense-splitter --local
 
 # Production
-npx wrangler d1 migrations apply open-expense-splitter --remote
+npx wrangler@4 d1 migrations apply open-expense-splitter --remote
 ```
 
 ### 3. Create Pages Project
 
 ```bash
-npx wrangler pages project create open-expense-splitter
+npx wrangler@4 pages project create open-expense-splitter
 ```
 
 ---
@@ -74,7 +74,7 @@ npm run worker:deploy
 ```bash
 cd client
 npm run build
-npx wrangler pages deploy dist --project-name=open-expense-splitter
+npx wrangler@4 pages deploy dist --project-name=open-expense-splitter
 ```
 
 ---
@@ -161,7 +161,7 @@ See [Environment Variables](Environment-Variables.md) for complete reference.
 Check D1 database is properly created:
 
 ```bash
-npx wrangler d1 info open-expense-splitter
+npx wrangler@4 d1 info open-expense-splitter
 ```
 
 ### Deploy Fails
@@ -169,7 +169,7 @@ npx wrangler d1 info open-expense-splitter
 Verify you have correct Cloudflare credentials:
 
 ```bash
-npx wrangler whoami
+npx wrangler@4 whoami
 ```
 
 ---

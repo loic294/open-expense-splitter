@@ -18,9 +18,9 @@ on:
 #
 # One-time setup (run locally before the first deploy):
 #   cd server
-#   npx wrangler d1 create open-expense-splitter
+#   npx wrangler@4 d1 create open-expense-splitter
 #   # Save the returned database_id as repo secret CF_D1_DATABASE_ID
-#   npx wrangler pages project create open-expense-splitter
+#   npx wrangler@4 pages project create open-expense-splitter
 
 jobs:
   deploy-worker:
@@ -63,6 +63,7 @@ jobs:
       - name: Apply D1 migrations
         uses: cloudflare/wrangler-action@v3
         with:
+          wranglerVersion: '4'
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: server
@@ -71,6 +72,7 @@ jobs:
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
         with:
+          wranglerVersion: '4'
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: server
@@ -116,11 +118,11 @@ jobs:
           PROJECT_NAME="${CF_PAGES_PROJECT_NAME:-open-expense-splitter}"
 
           echo "Checking Pages project '$PROJECT_NAME' in account '$CLOUDFLARE_ACCOUNT_ID'..."
-          if npx wrangler pages project list --json | grep -q "\"name\":\"$PROJECT_NAME\""; then
+          if npx wrangler@4 pages project list --json | grep -q "\"name\":\"$PROJECT_NAME\""; then
             echo "Pages project exists."
           else
             echo "Pages project not found. Creating '$PROJECT_NAME'..."
-            npx wrangler pages project create "$PROJECT_NAME" --production-branch=main
+            npx wrangler@4 pages project create "$PROJECT_NAME" --production-branch=main
           fi
 
       - name: Deploy to Cloudflare Pages
@@ -130,4 +132,4 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           PROJECT_NAME="${CF_PAGES_PROJECT_NAME:-open-expense-splitter}"
-          npx wrangler pages deploy dist --project-name="$PROJECT_NAME" --commit-dirty=true
+          npx wrangler@4 pages deploy dist --project-name="$PROJECT_NAME" --commit-dirty=true
