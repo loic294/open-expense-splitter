@@ -2,6 +2,15 @@
 
 Deploy the backend as a **Cloudflare Worker** and frontend as **Cloudflare Pages**.
 
+## Deploy to Cloudflare
+
+See [Set up Auth0](https://github.com/loic294/open-expense-splitter/wiki/Installation) for required environment variables.
+
+| Service      | Deploy                                                                                                                                                                                |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Backend**  | [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/loic294/open-expense-splitter/tree/main/server) |
+| **Frontend** | [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/loic294/open-expense-splitter/tree/main/client) |
+
 ## One-time Setup
 
 ### 1. Create D1 Database
