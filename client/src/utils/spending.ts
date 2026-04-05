@@ -267,5 +267,7 @@ export function splitLabel(transaction: Transaction, members: GroupMember[]) {
 }
 
 export function memberName(member: GroupMember) {
-  return member.name || member.email;
+  return (
+    member.name || member.email || member.temporary_email || "Temporary member"
+  );
 }

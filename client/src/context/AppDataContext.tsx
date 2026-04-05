@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useApiCall } from "../api";
 import type {
+  ContactInvite,
   Group,
   GroupForm,
   GroupMember,
@@ -20,17 +21,28 @@ import type {
 interface AppDataContextValue {
   bootstrapping: boolean;
   groups: Group[];
+  contacts: GroupMember[];
+  platformInvites: ContactInvite[];
   availableUsers: GroupMember[];
   loadingGroups: boolean;
   profile: ProfileForm;
   loadingProfile: boolean;
+  refreshContacts: () => Promise<GroupMember[]>;
+  createPlatformInvite: (email?: string) => Promise<ContactInvite>;
+  acceptPlatformInvite: (token: string) => Promise<void>;
+  getGroupMemberInvites: (groupId: string) => Promise<ContactInvite[]>;
+  acceptGroupInvite: (token: string) => Promise<{ groupId: string }>;
   refreshProfile: () => Promise<ProfileForm | null>;
   saveProfile: (profile: ProfileForm) => Promise<ProfileForm>;
   refreshGroups: () => Promise<Group[]>;
   saveGroup: (
     form: GroupForm,
     groupId?: string | null,
-  ) => Promise<string | null>;
+  ) => Promise<{
+    groupId: string | null;
+    generatedInvites: ContactInvite[];
+    pendingInvites: ContactInvite[];
+  }>;
   getGroupById: (groupId?: string | null) => Group | null;
   rememberGroupId: (groupId: string) => void;
   getPreferredGroupId: () => string | null;
@@ -57,6 +69,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const apiCall = useApiCall();
   const [bootstrapping, setBootstrapping] = useState(true);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [contacts, setContacts] = useState<GroupMember[]>([]);
+  const [platformInvites, setPlatformInvites] = useState<ContactInvite[]>([]);
   const [availableUsers, setAvailableUsers] = useState<GroupMember[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [profile, setProfile] = useState<ProfileForm>(defaultProfile);
@@ -115,14 +129,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const refreshGroups = useCallback(async () => {
     try {
       setLoadingGroups(true);
-      const [groupData, userData] = await Promise.all([
-        apiCall("/api/groups"),
-        apiCall("/api/users"),
-      ]);
+      const groupData = await apiCall("/api/groups");
       const nextGroups = (groupData.batches || []) as Group[];
-      const nextUsers = (userData.users || []) as GroupMember[];
       setGroups(nextGroups);
-      setAvailableUsers(nextUsers);
       return nextGroups;
     } catch (error) {
       console.error("Failed to fetch groups:", error);
@@ -131,6 +140,73 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       setLoadingGroups(false);
     }
   }, [apiCall]);
+
+  const refreshContacts = useCallback(async () => {
+    try {
+      const data = await apiCall("/api/contacts");
+      const nextContacts = (data.contacts || []) as GroupMember[];
+      const nextInvites = (data.sentInvites || []) as ContactInvite[];
+      setContacts(nextContacts);
+      setPlatformInvites(nextInvites);
+      setAvailableUsers(nextContacts);
+      return nextContacts;
+    } catch (error) {
+      console.error("Failed to fetch contacts:", error);
+      return [];
+    }
+  }, [apiCall]);
+
+  const createPlatformInvite = useCallback(
+    async (email?: string) => {
+      const invite = (await apiCall("/api/contacts/invites", {
+        method: "POST",
+        body: JSON.stringify({ email: email || undefined }),
+      })) as ContactInvite;
+
+      await refreshContacts();
+      return invite;
+    },
+    [apiCall, refreshContacts],
+  );
+
+  const acceptPlatformInvite = useCallback(
+    async (token: string) => {
+      await apiCall(
+        `/api/platform-invites/${encodeURIComponent(token)}/accept`,
+        {
+          method: "POST",
+        },
+      );
+      await Promise.all([refreshContacts(), refreshGroups()]);
+    },
+    [apiCall, refreshContacts, refreshGroups],
+  );
+
+  const getGroupMemberInvites = useCallback(
+    async (groupId: string) => {
+      const response = (await apiCall(
+        `/api/groups/${encodeURIComponent(groupId)}/member-invites`,
+      )) as { invites?: ContactInvite[] };
+
+      return (response.invites || []) as ContactInvite[];
+    },
+    [apiCall],
+  );
+
+  const acceptGroupInvite = useCallback(
+    async (token: string) => {
+      const response = (await apiCall(
+        `/api/group-invites/${encodeURIComponent(token)}/accept`,
+        {
+          method: "POST",
+        },
+      )) as { groupId: string };
+
+      await Promise.all([refreshContacts(), refreshGroups()]);
+      return response;
+    },
+    [apiCall, refreshContacts, refreshGroups],
+  );
 
   const saveGroup = useCallback(
     async (form: GroupForm, groupId?: string | null) => {
@@ -142,6 +218,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           name: form.name,
           emoji: form.emoji,
           memberIds: form.memberIds,
+          inviteEmails: form.inviteEmails,
+          temporaryMembers: form.temporaryMembers,
         }),
       });
 
@@ -155,7 +233,13 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         rememberGroupId(nextGroupId);
       }
 
-      return nextGroupId;
+      return {
+        groupId: nextGroupId,
+        generatedInvites: (response.generatedInvites ||
+          response.pendingInvites ||
+          []) as ContactInvite[],
+        pendingInvites: (response.pendingInvites || []) as ContactInvite[],
+      };
     },
     [apiCall, refreshGroups, rememberGroupId],
   );
@@ -191,6 +275,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     if (!isAuthenticated) {
       setBootstrapping(false);
       setGroups([]);
+      setContacts([]);
+      setPlatformInvites([]);
       setAvailableUsers([]);
       setProfile(defaultProfile);
       return;
@@ -200,7 +286,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       try {
         setBootstrapping(true);
         await apiCall("/api/auth/login", { method: "POST" });
-        await Promise.all([refreshProfile(), refreshGroups()]);
+        await Promise.all([
+          refreshProfile(),
+          refreshGroups(),
+          refreshContacts(),
+        ]);
       } catch (error) {
         console.error("Failed to initialize app:", error);
       } finally {
@@ -209,16 +299,29 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     };
 
     initialize();
-  }, [isAuthenticated, apiCall, refreshGroups, refreshProfile]);
+  }, [
+    isAuthenticated,
+    apiCall,
+    refreshGroups,
+    refreshProfile,
+    refreshContacts,
+  ]);
 
   const value = useMemo<AppDataContextValue>(
     () => ({
       bootstrapping,
       groups,
+      contacts,
+      platformInvites,
       availableUsers,
       loadingGroups,
       profile,
       loadingProfile,
+      refreshContacts,
+      createPlatformInvite,
+      acceptPlatformInvite,
+      getGroupMemberInvites,
+      acceptGroupInvite,
       refreshProfile,
       saveProfile,
       refreshGroups,
@@ -231,10 +334,17 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     [
       bootstrapping,
       groups,
+      contacts,
+      platformInvites,
       availableUsers,
       loadingGroups,
       profile,
       loadingProfile,
+      refreshContacts,
+      createPlatformInvite,
+      acceptPlatformInvite,
+      getGroupMemberInvites,
+      acceptGroupInvite,
       refreshProfile,
       saveProfile,
       refreshGroups,

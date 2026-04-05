@@ -8,6 +8,8 @@ const initialForm: GroupForm = {
   name: "",
   emoji: "💸",
   memberIds: [],
+  inviteEmails: [],
+  temporaryMembers: [],
 };
 
 export default function GroupCreatePage() {
@@ -33,8 +35,13 @@ export default function GroupCreatePage() {
         try {
           setSaving(true);
           setMessage(null);
-          const groupId = await saveGroup(form);
-          navigate(groupId ? `/groups/${groupId}` : "/", { replace: true });
+          const { groupId, generatedInvites } = await saveGroup(form);
+          const targetPath = groupId
+            ? generatedInvites.length > 0
+              ? `/groups/${groupId}/edit`
+              : `/groups/${groupId}`
+            : "/";
+          navigate(targetPath, { replace: true });
         } catch (error) {
           setMessage(
             error instanceof Error ? error.message : "Failed to save group",

@@ -17,8 +17,6 @@ export default function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams();
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
   const [navbarActionsEl, setNavbarActionsEl] = useState<HTMLDivElement | null>(
     null,
   );
@@ -49,22 +47,16 @@ export default function AppShell() {
                 ref={(el) => setNavbarActionsEl(el)}
                 className="flex items-center gap-2"
               />
-              <div
-                className={`dropdown dropdown-end ${groupMenuOpen ? "dropdown-open" : ""}`}
-              >
-                <button
-                  type="button"
-                  className="btn btn-sm gap-2"
-                  onClick={() => setGroupMenuOpen((open) => !open)}
-                >
+              <details className="dropdown dropdown-end">
+                <summary className="btn btn-sm gap-2">
                   <span>{activeGroup?.emoji || "💸"}</span>
                   <span className="max-w-40 truncate">
                     {loadingGroups
                       ? "Loading groups..."
                       : activeGroup?.name || "Create your first group"}
                   </span>
-                </button>
-                <ul className="menu dropdown-content z-10 mt-2 w-64 rounded-box border border-base-300 bg-base-100 p-2 shadow-sm">
+                </summary>
+                <ul className="menu dropdown-content z-50 mt-2 w-64 rounded-box border border-base-300 bg-base-100 p-2 shadow-sm">
                   {groups.length > 0 ? (
                     groups.map((group) => (
                       <li key={group.id}>
@@ -75,7 +67,6 @@ export default function AppShell() {
                           }
                           onClick={() => {
                             rememberGroupId(group.id);
-                            setGroupMenuOpen(false);
                             navigate(`/groups/${group.id}`);
                           }}
                         >
@@ -93,7 +84,6 @@ export default function AppShell() {
                     <button
                       type="button"
                       onClick={() => {
-                        setGroupMenuOpen(false);
                         navigate("/groups/new");
                       }}
                     >
@@ -105,25 +95,18 @@ export default function AppShell() {
                       <button
                         type="button"
                         onClick={() => {
-                          setGroupMenuOpen(false);
                           navigate(`/groups/${activeGroup.id}/edit`);
                         }}
                       >
-                        Edit current group
+                        Group settings
                       </button>
                     </li>
                   )}
                 </ul>
-              </div>
+              </details>
 
-              <div
-                className={`dropdown dropdown-end ${profileMenuOpen ? "dropdown-open" : ""}`}
-              >
-                <button
-                  type="button"
-                  className="btn btn-sm gap-2"
-                  onClick={() => setProfileMenuOpen((open) => !open)}
-                >
+              <details className="dropdown dropdown-end">
+                <summary className="btn btn-sm gap-2">
                   <div className="avatar">
                     <div className="w-6 rounded-md bg-base-200">
                       {profile.picture ? (
@@ -138,14 +121,13 @@ export default function AppShell() {
                   <span className="text-sm text-base-content/70 hidden sm:inline max-w-40 truncate">
                     {profile.name || profile.email || user?.name || user?.email}
                   </span>
-                </button>
-                <ul className="menu dropdown-content z-10 mt-2 w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-sm">
+                </summary>
+                <ul className="menu dropdown-content z-50 mt-2 w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-sm">
                   <li>
                     <button
                       type="button"
                       className={isProfileRoute ? "menu-active" : ""}
                       onClick={() => {
-                        setProfileMenuOpen(false);
                         navigate("/profile");
                       }}
                     >
@@ -156,7 +138,6 @@ export default function AppShell() {
                     <button
                       type="button"
                       onClick={() => {
-                        setProfileMenuOpen(false);
                         logout({
                           logoutParams: { returnTo: window.location.origin },
                         });
@@ -166,7 +147,7 @@ export default function AppShell() {
                     </button>
                   </li>
                 </ul>
-              </div>
+              </details>
             </div>
           </div>
         </header>

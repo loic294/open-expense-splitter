@@ -50,36 +50,207 @@ function normalizeMemberIds(ownerId: string, memberIds: unknown): string[] {
   return Array.from(new Set([ownerId, ...ids]));
 }
 
-function getBatchMembers(batchId: string) {
+function normalizeEmail(raw: unknown): string {
+  return typeof raw === "string" ? raw.trim().toLowerCase() : "";
+}
+
+function isValidEmail(value: string): boolean {
+  return /^\S+@\S+\.\S+$/.test(value);
+}
+
+function getFrontendBaseUrl() {
+  return (
+    process.env.APP_BASE_URL ||
+    process.env.FRONTEND_URL ||
+    "http://localhost:5173"
+  );
+}
+
+function buildInviteUrl(path: string) {
+  const base = getFrontendBaseUrl().replace(/\/$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${normalizedPath}`;
+}
+
+type TemporaryMemberPayload = {
+  id?: string;
+  name: string;
+  email: string | null;
+};
+
+function normalizeTemporaryMembers(raw: unknown): TemporaryMemberPayload[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const normalized = raw
+    .filter(
+      (value): value is Record<string, unknown> =>
+        typeof value === "object" && value !== null,
+    )
+    .map((value) => {
+      const id =
+        typeof value.id === "string" && value.id.trim()
+          ? value.id.trim()
+          : undefined;
+      const name =
+        typeof value.name === "string" ? value.name.trim().slice(0, 80) : "";
+      const email = normalizeEmail(value.email);
+      return {
+        id,
+        name,
+        email: email || null,
+      };
+    })
+    .filter((value) => value.name.length > 0);
+
+  const seen = new Set<string>();
+  return normalized.filter((value) => {
+    const key = value.id || `${value.name}|${value.email || ""}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function addContactPair(userA: string, userB: string, source = "invite") {
+  if (!userA || !userB || userA === userB) {
+    return;
+  }
+
+  const stmt = db.prepare(`
+    INSERT INTO user_contacts (id, user_id, contact_user_id, source)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id, contact_user_id) DO NOTHING
+  `);
+
+  const transaction = db.transaction(() => {
+    stmt.run(`contact_${randomUUID()}`, userA, userB, source);
+    stmt.run(`contact_${randomUUID()}`, userB, userA, source);
+  });
+
+  transaction();
+}
+
+function getKnownContacts(userId: string) {
   return db
     .prepare(
       `
-      SELECT u.id, u.email, u.name, u.picture, bm.created_at
-      FROM batch_members bm
-      JOIN users u ON u.id = bm.user_id
-      WHERE bm.batch_id = ?
+      SELECT u.id, u.email, u.name, u.picture, uc.created_at
+      FROM user_contacts uc
+      JOIN users u ON u.id = uc.contact_user_id
+      WHERE uc.user_id = ?
       ORDER BY COALESCE(u.name, u.email) ASC
+    `,
+    )
+    .all(userId) as any[];
+}
+
+function getBatchTemporaryMembers(batchId: string) {
+  return db
+    .prepare(
+      `
+      SELECT tm.id,
+             tm.email,
+             tm.name,
+             NULL AS picture,
+             tm.created_at,
+             1 AS is_temporary,
+             tm.email AS temporary_email
+      FROM batch_temporary_members tm
+      WHERE tm.batch_id = ?
+      ORDER BY COALESCE(tm.name, tm.email) ASC
     `,
     )
     .all(batchId) as any[];
 }
 
-function syncBatchMembers(batchId: string, memberIds: string[]) {
+function filterKnownContactMemberIds(ownerId: string, requestedIds: string[]) {
+  const knownContacts = new Set(
+    getKnownContacts(ownerId).map((contact) => contact.id as string),
+  );
+
+  return requestedIds.filter(
+    (memberId) => memberId === ownerId || knownContacts.has(memberId),
+  );
+}
+
+function getBatchMembers(batchId: string) {
+  const realMembers = db
+    .prepare(
+      `
+      SELECT u.id,
+             u.email,
+             u.name,
+             u.picture,
+             bm.created_at,
+             0 AS is_temporary,
+             NULL AS temporary_email
+      FROM batch_members bm
+      JOIN users u ON u.id = bm.user_id
+      WHERE bm.batch_id = ?
+    `,
+    )
+    .all(batchId) as any[];
+
+  const temporaryMembers = getBatchTemporaryMembers(batchId);
+
+  return [...realMembers, ...temporaryMembers].sort((left, right) => {
+    const leftLabel = (left.name || left.email || "").toLowerCase();
+    const rightLabel = (right.name || right.email || "").toLowerCase();
+    return leftLabel.localeCompare(rightLabel);
+  });
+}
+
+function syncBatchMembers(
+  batchId: string,
+  memberIds: string[],
+  temporaryMembers: TemporaryMemberPayload[],
+  actorUserId: string,
+) {
   const deleteStmt = db.prepare(`DELETE FROM batch_members WHERE batch_id = ?`);
+  const deleteTemporaryStmt = db.prepare(
+    `DELETE FROM batch_temporary_members WHERE batch_id = ?`,
+  );
   const insertStmt = db.prepare(`
     INSERT INTO batch_members (id, batch_id, user_id)
     VALUES (?, ?, ?)
   `);
+  const insertTemporaryStmt = db.prepare(`
+    INSERT INTO batch_temporary_members (
+      id,
+      batch_id,
+      name,
+      email,
+      created_by_user_id
+    )
+    VALUES (?, ?, ?, ?, ?)
+  `);
 
-  const transaction = db.transaction((ids: string[]) => {
-    deleteStmt.run(batchId);
+  const transaction = db.transaction(
+    (ids: string[], temps: TemporaryMemberPayload[]) => {
+      deleteStmt.run(batchId);
+      deleteTemporaryStmt.run(batchId);
 
-    ids.forEach((memberId) => {
-      insertStmt.run(`member_${randomUUID()}`, batchId, memberId);
-    });
-  });
+      ids.forEach((memberId) => {
+        insertStmt.run(`member_${randomUUID()}`, batchId, memberId);
+      });
 
-  transaction(memberIds);
+      temps.forEach((member) => {
+        insertTemporaryStmt.run(
+          member.id || `temp_${randomUUID()}`,
+          batchId,
+          member.name,
+          member.email,
+          actorUserId,
+        );
+      });
+    },
+  );
+
+  transaction(memberIds, temporaryMembers);
 }
 
 function canAccessBatch(userId: string, batchId: string): boolean {
@@ -100,6 +271,112 @@ function canAccessBatch(userId: string, batchId: string): boolean {
 
 function getBatchMemberIds(batchId: string): string[] {
   return getBatchMembers(batchId).map((member) => member.id);
+}
+
+function replaceMemberInSplitData(
+  raw: string | null,
+  fromId: string,
+  toId: string,
+) {
+  const parsed = parseSplitData(raw) as {
+    includedMemberIds?: unknown;
+    values?: unknown;
+  } | null;
+
+  if (!parsed || typeof parsed !== "object") {
+    return raw;
+  }
+
+  const included = Array.isArray(parsed.includedMemberIds)
+    ? parsed.includedMemberIds
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => (value === fromId ? toId : value))
+    : [];
+  const dedupedIncluded = Array.from(new Set(included));
+
+  const values =
+    parsed.values && typeof parsed.values === "object"
+      ? { ...(parsed.values as Record<string, number>) }
+      : {};
+
+  if (Object.prototype.hasOwnProperty.call(values, fromId)) {
+    const previous = Number(values[fromId] || 0);
+    const existing = Number(values[toId] || 0);
+    values[toId] = previous + existing;
+    delete values[fromId];
+  }
+
+  return serializeSplitData({
+    includedMemberIds: dedupedIncluded,
+    values,
+  });
+}
+
+function replaceTemporaryMemberWithUser(
+  batchId: string,
+  temporaryMemberId: string,
+  userId: string,
+) {
+  const exists = db
+    .prepare(
+      `SELECT id FROM batch_temporary_members WHERE id = ? AND batch_id = ? LIMIT 1`,
+    )
+    .get(temporaryMemberId, batchId) as { id: string } | undefined;
+
+  if (!exists) {
+    return false;
+  }
+
+  const transaction = db.transaction(() => {
+    db.prepare(
+      `
+      INSERT INTO batch_members (id, batch_id, user_id)
+      VALUES (?, ?, ?)
+      ON CONFLICT(batch_id, user_id) DO NOTHING
+    `,
+    ).run(`member_${randomUUID()}`, batchId, userId);
+
+    db.prepare(
+      `
+      UPDATE spendings
+      SET paid_by_id = ?
+      WHERE batch_id = ? AND paid_by_id = ?
+    `,
+    ).run(userId, batchId, temporaryMemberId);
+
+    const spendingsWithSplitData = db
+      .prepare(
+        `
+      SELECT id, split_data
+      FROM spendings
+      WHERE batch_id = ? AND split_data IS NOT NULL
+    `,
+      )
+      .all(batchId) as Array<{ id: string; split_data: string | null }>;
+
+    const updateSplitStmt = db.prepare(
+      `UPDATE spendings SET split_data = ? WHERE id = ?`,
+    );
+
+    spendingsWithSplitData.forEach((spending) => {
+      const nextSplitData = replaceMemberInSplitData(
+        spending.split_data,
+        temporaryMemberId,
+        userId,
+      );
+
+      if (nextSplitData !== spending.split_data) {
+        updateSplitStmt.run(nextSplitData, spending.id);
+      }
+    });
+
+    db.prepare(`DELETE FROM batch_temporary_members WHERE id = ?`).run(
+      temporaryMemberId,
+    );
+  });
+
+  transaction();
+  return true;
 }
 
 function parseSplitData(raw: string | null) {
@@ -501,6 +778,214 @@ app.get("/api/users", (c) => {
     return c.json({ users, total: users.length });
   } catch (error) {
     console.error("[api:/api/users] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.get("/api/contacts", (c) => {
+  try {
+    const auth = requireAuth(c);
+    const userId = getUserIdFromSub(auth.sub);
+
+    const contacts = getKnownContacts(userId);
+    const sentInvites = db
+      .prepare(
+        `
+      SELECT id, email, token, status, created_at, accepted_at
+      FROM platform_invites
+      WHERE inviter_user_id = ?
+      ORDER BY created_at DESC
+    `,
+      )
+      .all(userId)
+      .map((invite: any) => ({
+        ...invite,
+        invitePath: `/invites/platform/${invite.token}`,
+        inviteUrl: buildInviteUrl(`/invites/platform/${invite.token}`),
+      }));
+
+    return c.json({ contacts, sentInvites });
+  } catch (error) {
+    console.error("[api:/api/contacts GET] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.post("/api/contacts/invites", async (c) => {
+  try {
+    const auth = requireAuth(c);
+    const userId = getUserIdFromSub(auth.sub);
+    const body = (await c.req.json()) as { email?: string };
+    const email = normalizeEmail(body.email);
+
+    if (email && !isValidEmail(email)) {
+      return c.json({ error: "Invalid email address" }, 400);
+    }
+
+    const token = randomUUID().replace(/-/g, "");
+    const inviteId = `platform_invite_${randomUUID()}`;
+
+    db.prepare(
+      `
+      INSERT INTO platform_invites (id, inviter_user_id, email, token, status)
+      VALUES (?, ?, ?, ?, 'pending')
+    `,
+    ).run(inviteId, userId, email || null, token);
+
+    return c.json(
+      {
+        id: inviteId,
+        email: email || null,
+        token,
+        status: "pending",
+        invitePath: `/invites/platform/${token}`,
+        inviteUrl: buildInviteUrl(`/invites/platform/${token}`),
+      },
+      201,
+    );
+  } catch (error) {
+    console.error("[api:/api/contacts/invites POST] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.get("/api/platform-invites/:token", (c) => {
+  try {
+    requireAuth(c);
+    const token = c.req.param("token");
+
+    const invite = db
+      .prepare(
+        `
+      SELECT pi.id,
+             pi.email,
+             pi.status,
+             pi.created_at,
+             inviter.id AS inviter_id,
+             inviter.email AS inviter_email,
+             inviter.name AS inviter_name
+      FROM platform_invites pi
+      JOIN users inviter ON inviter.id = pi.inviter_user_id
+      WHERE pi.token = ?
+      LIMIT 1
+    `,
+      )
+      .get(token) as any;
+
+    if (!invite) {
+      return c.json({ error: "Invite not found" }, 404);
+    }
+
+    return c.json({
+      ...invite,
+      invitePath: `/invites/platform/${token}`,
+      inviteUrl: buildInviteUrl(`/invites/platform/${token}`),
+    });
+  } catch (error) {
+    console.error("[api:/api/platform-invites/:token GET] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.post("/api/platform-invites/:token/accept", (c) => {
+  try {
+    const auth = requireAuth(c);
+    const userId = getUserIdFromSub(auth.sub);
+    const token = c.req.param("token");
+
+    const invite = db
+      .prepare(
+        `
+      SELECT id, inviter_user_id, email, status
+      FROM platform_invites
+      WHERE token = ?
+      LIMIT 1
+    `,
+      )
+      .get(token) as
+      | {
+          id: string;
+          inviter_user_id: string;
+          email: string | null;
+          status: string;
+        }
+      | undefined;
+
+    if (!invite) {
+      return c.json({ error: "Invite not found" }, 404);
+    }
+
+    if (invite.status !== "pending") {
+      return c.json({ error: "Invite is no longer pending" }, 409);
+    }
+
+    if (invite.inviter_user_id === userId) {
+      return c.json({ error: "You cannot accept your own invite" }, 400);
+    }
+
+    const currentUser = db
+      .prepare(`SELECT id, email FROM users WHERE id = ? LIMIT 1`)
+      .get(userId) as { id: string; email: string } | undefined;
+
+    if (!currentUser) {
+      return c.json({ error: "Current user not found" }, 404);
+    }
+
+    if (invite.email && normalizeEmail(currentUser.email) !== invite.email) {
+      return c.json({ error: "This invite was issued for another email" }, 403);
+    }
+
+    const transaction = db.transaction(() => {
+      db.prepare(
+        `
+      UPDATE platform_invites
+      SET status = 'accepted', accepted_by_user_id = ?, accepted_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `,
+      ).run(userId, invite.id);
+      addContactPair(invite.inviter_user_id, userId, "platform_invite");
+    });
+
+    transaction();
+
+    return c.json({
+      message: "Invite accepted",
+      inviterUserId: invite.inviter_user_id,
+      acceptedByUserId: userId,
+    });
+  } catch (error) {
+    console.error(
+      "[api:/api/platform-invites/:token/accept POST] failed:",
+      error,
+    );
     return c.json(
       {
         error: isUnauthorizedError(error)
@@ -1402,6 +1887,77 @@ app.get("/api/groups", (c) => {
   }
 });
 
+function createOrReuseGroupInvites(
+  batchId: string,
+  inviterUserId: string,
+  inviteEmails: string[],
+) {
+  const normalizedEmails = Array.from(
+    new Set(inviteEmails.map((email) => normalizeEmail(email))),
+  ).filter((email) => isValidEmail(email));
+
+  const createStmt = db.prepare(`
+    INSERT INTO group_member_invites (id, batch_id, inviter_user_id, email, token, status)
+    VALUES (?, ?, ?, ?, ?, 'pending')
+  `);
+
+  return normalizedEmails.map((email) => {
+    const existing = db
+      .prepare(
+        `
+      SELECT id, email, token, status, created_at, accepted_at
+      FROM group_member_invites
+      WHERE batch_id = ? AND email = ? AND status = 'pending'
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+      )
+      .get(batchId, email) as any;
+
+    const invite =
+      existing ||
+      (() => {
+        const token = randomUUID().replace(/-/g, "");
+        const id = `group_invite_${randomUUID()}`;
+        createStmt.run(id, batchId, inviterUserId, email, token);
+        return db
+          .prepare(
+            `
+          SELECT id, email, token, status, created_at, accepted_at
+          FROM group_member_invites
+          WHERE id = ?
+          LIMIT 1
+        `,
+          )
+          .get(id) as any;
+      })();
+
+    return {
+      ...invite,
+      invitePath: `/invites/group/${invite.token}`,
+      inviteUrl: buildInviteUrl(`/invites/group/${invite.token}`),
+    };
+  });
+}
+
+function getGroupPendingInvites(batchId: string) {
+  return db
+    .prepare(
+      `
+      SELECT id, email, token, status, created_at, accepted_at
+      FROM group_member_invites
+      WHERE batch_id = ? AND status = 'pending'
+      ORDER BY created_at DESC
+    `,
+    )
+    .all(batchId)
+    .map((invite: any) => ({
+      ...invite,
+      invitePath: `/invites/group/${invite.token}`,
+      inviteUrl: buildInviteUrl(`/invites/group/${invite.token}`),
+    }));
+}
+
 // Create group
 app.post("/api/groups", async (c) => {
   try {
@@ -1411,13 +1967,22 @@ app.post("/api/groups", async (c) => {
       emoji?: string;
       description?: string;
       memberIds?: string[];
+      inviteEmails?: string[];
+      temporaryMembers?: TemporaryMemberPayload[];
     };
 
     const userId = getUserIdFromSub(auth.sub);
     const id = randomUUID();
     const name = (body.name || "").trim();
     const emoji = (body.emoji || "💸").trim() || "💸";
-    const memberIds = normalizeMemberIds(userId, body.memberIds);
+    const requestedMemberIds = normalizeMemberIds(userId, body.memberIds);
+    const memberIds = filterKnownContactMemberIds(userId, requestedMemberIds);
+    const temporaryMembers = normalizeTemporaryMembers(body.temporaryMembers);
+    const inviteEmails = Array.isArray(body.inviteEmails)
+      ? body.inviteEmails.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [];
 
     if (!name) {
       return c.json({ error: "Group name is required" }, 400);
@@ -1430,10 +1995,15 @@ app.post("/api/groups", async (c) => {
 
     const transaction = db.transaction(() => {
       stmt.run(id, userId, name, emoji, body.description || null);
-      syncBatchMembers(id, memberIds);
+      syncBatchMembers(id, memberIds, temporaryMembers, userId);
     });
 
     transaction();
+    const generatedInvites = createOrReuseGroupInvites(
+      id,
+      userId,
+      inviteEmails,
+    );
 
     return c.json(
       {
@@ -1448,6 +2018,7 @@ app.post("/api/groups", async (c) => {
           members: getBatchMembers(id),
           canEdit: true,
         },
+        pendingInvites: generatedInvites,
       },
       201,
     );
@@ -1472,12 +2043,21 @@ app.patch("/api/groups/:id", async (c) => {
       emoji?: string;
       description?: string;
       memberIds?: string[];
+      inviteEmails?: string[];
+      temporaryMembers?: TemporaryMemberPayload[];
     };
     const userId = getUserIdFromSub(auth.sub);
     const batchId = c.req.param("id");
     const name = (body.name || "").trim();
     const emoji = (body.emoji || "💸").trim() || "💸";
-    const memberIds = normalizeMemberIds(userId, body.memberIds);
+    const requestedMemberIds = normalizeMemberIds(userId, body.memberIds);
+    const memberIds = filterKnownContactMemberIds(userId, requestedMemberIds);
+    const temporaryMembers = normalizeTemporaryMembers(body.temporaryMembers);
+    const inviteEmails = Array.isArray(body.inviteEmails)
+      ? body.inviteEmails.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [];
 
     if (!name) {
       return c.json({ error: "Group name is required" }, 400);
@@ -1503,10 +2083,15 @@ app.patch("/api/groups/:id", async (c) => {
 
     const transaction = db.transaction(() => {
       updateStmt.run(name, emoji, body.description || null, batchId);
-      syncBatchMembers(batchId, memberIds);
+      syncBatchMembers(batchId, memberIds, temporaryMembers, userId);
     });
 
     transaction();
+    const generatedInvites = createOrReuseGroupInvites(
+      batchId,
+      userId,
+      inviteEmails,
+    );
 
     const updated = db
       .prepare(
@@ -1522,9 +2107,276 @@ app.patch("/api/groups/:id", async (c) => {
       ...updated,
       members: getBatchMembers(batchId),
       canEdit: true,
+      pendingInvites: getGroupPendingInvites(batchId),
+      generatedInvites,
     });
   } catch (error) {
     console.error("[api:/api/groups PATCH] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.get("/api/groups/:id/member-invites", (c) => {
+  try {
+    const auth = requireAuth(c);
+    const userId = getUserIdFromSub(auth.sub);
+    const batchId = c.req.param("id");
+
+    const batch = db
+      .prepare(`SELECT owner_id FROM batches WHERE id = ? LIMIT 1`)
+      .get(batchId) as { owner_id: string } | undefined;
+
+    if (!batch) {
+      return c.json({ error: "Group not found" }, 404);
+    }
+
+    if (batch.owner_id !== userId) {
+      return c.json({ error: "Only the group owner can view invites" }, 403);
+    }
+
+    return c.json({ invites: getGroupPendingInvites(batchId) });
+  } catch (error) {
+    console.error("[api:/api/groups/:id/member-invites GET] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.get("/api/group-invites/:token", (c) => {
+  try {
+    requireAuth(c);
+    const token = c.req.param("token");
+
+    const invite = db
+      .prepare(
+        `
+      SELECT gmi.id,
+             gmi.email,
+             gmi.status,
+             gmi.created_at,
+             b.id AS group_id,
+             b.name AS group_name,
+             b.emoji AS group_emoji,
+             inviter.id AS inviter_id,
+             inviter.email AS inviter_email,
+             inviter.name AS inviter_name
+      FROM group_member_invites gmi
+      JOIN batches b ON b.id = gmi.batch_id
+      JOIN users inviter ON inviter.id = gmi.inviter_user_id
+      WHERE gmi.token = ?
+      LIMIT 1
+    `,
+      )
+      .get(token) as any;
+
+    if (!invite) {
+      return c.json({ error: "Invite not found" }, 404);
+    }
+
+    return c.json({
+      ...invite,
+      invitePath: `/invites/group/${token}`,
+      inviteUrl: buildInviteUrl(`/invites/group/${token}`),
+    });
+  } catch (error) {
+    console.error("[api:/api/group-invites/:token GET] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.post("/api/group-invites/:token/accept", (c) => {
+  try {
+    const auth = requireAuth(c);
+    const userId = getUserIdFromSub(auth.sub);
+    const token = c.req.param("token");
+
+    const invite = db
+      .prepare(
+        `
+      SELECT gmi.id,
+             gmi.batch_id,
+             gmi.inviter_user_id,
+             gmi.email,
+             gmi.status,
+             b.id AS group_id,
+             b.owner_id
+      FROM group_member_invites gmi
+      JOIN batches b ON b.id = gmi.batch_id
+      WHERE gmi.token = ?
+      LIMIT 1
+    `,
+      )
+      .get(token) as
+      | {
+          id: string;
+          batch_id: string;
+          inviter_user_id: string;
+          email: string;
+          status: string;
+          group_id: string;
+          owner_id: string;
+        }
+      | undefined;
+
+    if (!invite) {
+      return c.json({ error: "Invite not found" }, 404);
+    }
+
+    if (invite.status !== "pending") {
+      return c.json({ error: "Invite is no longer pending" }, 409);
+    }
+
+    const currentUser = db
+      .prepare(`SELECT id, email FROM users WHERE id = ? LIMIT 1`)
+      .get(userId) as { id: string; email: string } | undefined;
+
+    if (!currentUser) {
+      return c.json({ error: "Current user not found" }, 404);
+    }
+
+    if (normalizeEmail(currentUser.email) !== normalizeEmail(invite.email)) {
+      return c.json({ error: "This invite was issued for another email" }, 403);
+    }
+
+    const transaction = db.transaction(() => {
+      db.prepare(
+        `
+      INSERT INTO batch_members (id, batch_id, user_id)
+      VALUES (?, ?, ?)
+      ON CONFLICT(batch_id, user_id) DO NOTHING
+    `,
+      ).run(`member_${randomUUID()}`, invite.batch_id, userId);
+
+      db.prepare(
+        `
+      UPDATE group_member_invites
+      SET status = 'accepted', accepted_by_user_id = ?, accepted_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `,
+      ).run(userId, invite.id);
+
+      addContactPair(invite.inviter_user_id, userId, "group_invite");
+    });
+
+    transaction();
+
+    const matchingTemporaryMember = db
+      .prepare(
+        `
+      SELECT id
+      FROM batch_temporary_members
+      WHERE batch_id = ? AND LOWER(email) = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `,
+      )
+      .get(invite.batch_id, normalizeEmail(invite.email)) as
+      | { id: string }
+      | undefined;
+
+    if (matchingTemporaryMember) {
+      replaceTemporaryMemberWithUser(
+        invite.batch_id,
+        matchingTemporaryMember.id,
+        userId,
+      );
+    }
+
+    return c.json({
+      message: "Invite accepted",
+      groupId: invite.group_id,
+    });
+  } catch (error) {
+    console.error("[api:/api/group-invites/:token/accept POST] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+app.post("/api/groups/:id/temporary-members/:memberId/replace", async (c) => {
+  try {
+    const auth = requireAuth(c);
+    const userId = getUserIdFromSub(auth.sub);
+    const batchId = c.req.param("id");
+    const temporaryMemberId = c.req.param("memberId");
+    const body = (await c.req.json()) as { userId?: string };
+    const replacementUserId =
+      typeof body.userId === "string" ? body.userId : "";
+
+    if (!replacementUserId) {
+      return c.json({ error: "userId is required" }, 400);
+    }
+
+    const batch = db
+      .prepare(`SELECT owner_id FROM batches WHERE id = ? LIMIT 1`)
+      .get(batchId) as { owner_id: string } | undefined;
+
+    if (!batch) {
+      return c.json({ error: "Group not found" }, 404);
+    }
+
+    if (batch.owner_id !== userId) {
+      return c.json(
+        { error: "Only the group owner can replace a temporary member" },
+        403,
+      );
+    }
+
+    const allowedMembers = new Set(
+      filterKnownContactMemberIds(userId, [replacementUserId]),
+    );
+    if (!allowedMembers.has(replacementUserId)) {
+      return c.json(
+        { error: "Replacement user must be one of your known contacts" },
+        400,
+      );
+    }
+
+    const replaced = replaceTemporaryMemberWithUser(
+      batchId,
+      temporaryMemberId,
+      replacementUserId,
+    );
+
+    if (!replaced) {
+      return c.json({ error: "Temporary member not found" }, 404);
+    }
+
+    return c.json({
+      message: "Temporary member replaced",
+      members: getBatchMembers(batchId),
+    });
+  } catch (error) {
+    console.error(
+      "[api:/api/groups/:id/temporary-members/:memberId/replace POST] failed:",
+      error,
+    );
     return c.json(
       {
         error: isUnauthorizedError(error)

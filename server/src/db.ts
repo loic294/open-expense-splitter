@@ -130,6 +130,69 @@ export function initializeDB() {
     )
   `);
 
+  // Temporary members can be used before a real account exists.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS batch_temporary_members (
+      id TEXT PRIMARY KEY,
+      batch_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      email TEXT,
+      created_by_user_id TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // A user's known contacts. Rows are stored in both directions.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_contacts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      contact_user_id TEXT NOT NULL,
+      source TEXT DEFAULT 'manual',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, contact_user_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (contact_user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Invite links to connect users on the platform.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS platform_invites (
+      id TEXT PRIMARY KEY,
+      inviter_user_id TEXT NOT NULL,
+      email TEXT,
+      token TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      accepted_by_user_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      accepted_at DATETIME,
+      FOREIGN KEY (inviter_user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (accepted_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
+  // Group invitation links for emails that are not yet known contacts.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS group_member_invites (
+      id TEXT PRIMARY KEY,
+      batch_id TEXT NOT NULL,
+      inviter_user_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      accepted_by_user_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      accepted_at DATETIME,
+      FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE CASCADE,
+      FOREIGN KEY (inviter_user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (accepted_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
   // Batch items - individual spending records in a batch
   db.exec(`
     CREATE TABLE IF NOT EXISTS batch_items (

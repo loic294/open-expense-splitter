@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import type { TransactionColumnType } from "../types";
 
 const COLUMN_OPTIONS: { id: TransactionColumnType; label: string }[] = [
@@ -54,11 +54,6 @@ export default function ColumnVisibilityCard({
   const handleSave = useCallback(async () => {
     await onSave(Array.from(visibleColumns));
   }, [visibleColumns, onSave]);
-
-  const allSelected = useMemo(
-    () => visibleColumns.size === COLUMN_OPTIONS.length,
-    [visibleColumns.size],
-  );
 
   return (
     <section className="card card-border bg-base-100 rounded-md w-full">

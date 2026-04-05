@@ -22,6 +22,25 @@ export interface GroupMember {
   email: string;
   name: string | null;
   picture: string | null;
+  is_temporary?: number;
+  temporary_email?: string | null;
+}
+
+export interface TemporaryMemberInput {
+  id?: string;
+  name: string;
+  email: string;
+}
+
+export interface ContactInvite {
+  id: string;
+  email: string | null;
+  token: string;
+  status: string;
+  created_at?: string;
+  accepted_at?: string | null;
+  invitePath: string;
+  inviteUrl: string;
 }
 
 export interface Group {
@@ -40,6 +59,8 @@ export interface GroupForm {
   name: string;
   emoji: string;
   memberIds: string[];
+  inviteEmails: string[];
+  temporaryMembers: TemporaryMemberInput[];
 }
 
 export interface SplitData {
