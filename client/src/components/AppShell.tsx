@@ -1,6 +1,7 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { useState } from "react";
 import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
+import logo from "../assets/OpenExpenseSplitterLogo.svg";
 import { useAppData } from "../context/AppDataContext";
 import NavbarActionsContext from "../context/NavbarActionsContext";
 import Footer from "./Footer";
@@ -34,13 +35,18 @@ export default function AppShell() {
           <div className="w-full flex justify-between gap-3">
             <button
               type="button"
-              className="text-base md:text-lg font-semibold"
+              className="flex items-center gap-2 text-base md:text-lg font-semibold"
               onClick={() => {
                 const nextGroupId = activeGroup?.id || getPreferredGroupId();
                 navigate(nextGroupId ? `/groups/${nextGroupId}` : "/");
               }}
             >
-              Open Expense Splitter
+              <img
+                src={logo}
+                alt="Open Expense Splitter logo"
+                className="h-8 w-8"
+              />
+              <span>Open Expense Splitter</span>
             </button>
 
             <div className="flex items-center gap-2">
