@@ -24,3 +24,18 @@ AUTH0_CLIENT_ID = "YOUR_AUTH0_CLIENT_ID"
 #   npx wrangler@4 secret put AUTH0_CLIENT_SECRET
 #
 # Or set them as environment secrets in the GitHub Actions workflow.
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1
