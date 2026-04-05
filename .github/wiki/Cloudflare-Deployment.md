@@ -81,6 +81,33 @@ npx wrangler pages deploy dist --project-name=batch-spending-splitter
 
 ## Automated Deploy (GitHub Actions)
 
+### Prerequisites: Get Cloudflare Credentials
+
+#### 1. Create Cloudflare API Token
+
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com) and sign in
+2. Click your profile icon (bottom left) → **API Tokens**
+3. Click **Create Token**
+4. Under "Custom token", click **Get started**
+5. Name it (e.g., "GitHub Actions")
+6. Set permissions:
+   - **Account** → **Cloudflare Workers AI** → Edit
+   - **Account** → **Worker Routes** → Edit
+   - **Account** → **Workers KV Storage** → Edit
+   - **Account** → **D1** → Edit
+   - **Pages** → **Pages** → Edit
+7. Click **Continue to summary** → **Create Token**
+8. Copy the token (you'll need it in the next step)
+
+#### 2. Get Your Cloudflare Account ID
+
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. Click any domain or go to **Workers & Pages**
+3. Look for **Account ID** in the right sidebar under "API"
+4. Copy it (looks like a hexadecimal string)
+
+---
+
 ### 1. Create GitHub Secrets
 
 Go to your repository **Settings → Secrets and variables → Actions** and add:
