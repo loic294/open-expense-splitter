@@ -20,17 +20,20 @@ export default function LoginPage() {
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-8 md:px-6 md:py-10">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6">
-          <section className="hero overflow-hidden rounded-box border border-base-300 bg-base-100 shadow-sm">
-            <div className="hero-content w-full max-w-none p-6 md:p-10">
-              <div className="flex w-full flex-col items-start gap-8 text-left lg:flex-row lg:items-start lg:justify-start">
+      <main className="flex-1 pb-8 md:pb-10">
+        <section className="relative overflow-hidden border-b border-warning/30 bg-gradient-to-br from-warning/35 via-warning/20 to-base-100 shadow-sm">
+          <div className="pointer-events-none absolute -left-20 top-6 h-56 w-56 rounded-full bg-warning/30 blur-3xl" />
+          <div className="pointer-events-none absolute -right-16 bottom-0 h-64 w-64 rounded-full bg-warning/20 blur-3xl" />
+
+          <div className="hero mx-auto w-full max-w-6xl px-4 md:px-6">
+            <div className="hero-content w-full max-w-none py-20 md:py-24">
+              <div className="flex w-full flex-col items-start gap-8 text-left lg:flex-row lg:items-center lg:justify-between">
                 <div className="max-w-2xl space-y-5">
                   <div className="space-y-3">
                     <p className="badge badge-soft badge-primary badge-lg">
                       Open Expense Splitter
                     </p>
-                    <h1 className="text-4xl font-semibold tracking-tight md:text-5xl pt-6">
+                    <h1 className="pt-2 text-4xl font-semibold tracking-tight md:text-5xl">
                       Track shared spending without turning it into a
                       spreadsheet job.
                     </h1>
@@ -40,7 +43,7 @@ export default function LoginPage() {
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 text-sm pb-4">
+                  <div className="flex flex-wrap gap-2 pb-2 text-sm">
                     <span className="badge badge-outline badge-primary">
                       Free to use
                     </span>
@@ -67,10 +70,35 @@ export default function LoginPage() {
                     </p>
                   </div>
                 </div>
+
+                <div className="grid w-full max-w-sm grid-cols-2 gap-3">
+                  <div className="rounded-box border border-warning/40 bg-base-100/80 p-4 backdrop-blur">
+                    <p className="text-xs uppercase tracking-wide text-base-content/60">
+                      Pricing
+                    </p>
+                    <p className="text-xl font-semibold">$0 forever</p>
+                  </div>
+                  <div className="rounded-box border border-warning/40 bg-base-100/80 p-4 backdrop-blur">
+                    <p className="text-xs uppercase tracking-wide text-base-content/60">
+                      Paywall
+                    </p>
+                    <p className="text-xl font-semibold">None</p>
+                  </div>
+                  <div className="col-span-2 rounded-box border border-warning/40 bg-base-100/80 p-4 backdrop-blur">
+                    <p className="text-xs uppercase tracking-wide text-base-content/60">
+                      Built for
+                    </p>
+                    <p className="text-base font-medium">
+                      Trips, roommates, events, and shared households
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
-          </section>
+          </div>
+        </section>
 
+        <div className="mx-auto mt-6 flex max-w-6xl flex-col gap-10 px-4 md:mt-10 md:px-6">
           <div
             role="alert"
             className="alert alert-error border border-error alert-soft shadow-sm"
@@ -91,9 +119,7 @@ export default function LoginPage() {
                 <p className="badge badge-soft badge-secondary w-fit">
                   Focused workflow
                 </p>
-                <h2 className="card-title text-xl">
-                  Create groups for easy grouping
-                </h2>
+                <h2 className="card-title text-xl">Create unlimited groups</h2>
                 <p className="text-sm leading-6 text-base-content/70">
                   Create dedicated groups for trips, family expenses, shared
                   apartments, and events so each context keeps its own clear
@@ -254,6 +280,15 @@ export default function LoginPage() {
                         splid: false,
                       },
                       {
+                        feature: "Mobile apps",
+                        ours: "PWA",
+                        splitwise: true,
+                        settleup: true,
+                        tricount: true,
+                        splitmyexpenses: false,
+                        splid: true,
+                      },
+                      {
                         feature: "Receipt upload",
                         ours: "Coming soon!",
                         splitwise: "Pro only",
@@ -302,9 +337,9 @@ export default function LoginPage() {
                                 </span>
                               ) : (
                                 <span
-                                  className={`badge badge-soft badge-sm ${i === 0 ? "badge-info" : "badge-warning"}`}
+                                  className={`badge badge-soft badge-sm ${val === "PWA" ? "badge-success" : i === 0 ? "badge-info" : "badge-warning"}`}
                                 >
-                                  {val}
+                                  {val === "PWA" ? `✓ ${val}` : val}
                                 </span>
                               )}
                             </td>
@@ -314,6 +349,83 @@ export default function LoginPage() {
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </section>
+
+          <section className="card card-border bg-base-100 shadow-sm">
+            <div className="card-body gap-4">
+              <div className="space-y-1">
+                <p className="badge badge-soft badge-secondary w-fit">FAQ</p>
+                <h2 className="text-2xl font-semibold tracking-tight pt-1">
+                  Frequently asked questions
+                </h2>
+                <p className="text-sm leading-6 text-base-content/70">
+                  Quick answers about pricing, privacy, and where the project is
+                  heading.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="collapse collapse-arrow border border-base-300 bg-base-100">
+                  <input type="radio" name="login-faq" defaultChecked />
+                  <div className="collapse-title text-base font-medium">
+                    Is Open Expense Splitter free forever?
+                  </div>
+                  <div className="collapse-content text-sm leading-6 text-base-content/75">
+                    Yes. The core product is free to use with no subscription
+                    requirement and no paywall for existing features.
+                  </div>
+                </div>
+
+                <div className="collapse collapse-arrow border border-base-300 bg-base-100">
+                  <input type="radio" name="login-faq" />
+                  <div className="collapse-title text-base font-medium">
+                    Do you sell or share my expense data?
+                  </div>
+                  <div className="collapse-content text-sm leading-6 text-base-content/75">
+                    No. Your data is not sold. The app stores what is needed to
+                    run your groups, and you can remove your data from your
+                    account at any time.
+                  </div>
+                </div>
+
+                <div className="collapse collapse-arrow border border-base-300 bg-base-100">
+                  <input type="radio" name="login-faq" />
+                  <div className="collapse-title text-base font-medium">
+                    What is a PWA and can I install it on my phone?
+                  </div>
+                  <div className="collapse-content text-sm leading-6 text-base-content/75">
+                    A PWA (Progressive Web App) is a website that behaves like
+                    an app when installed. On iPhone/iPad, open the site in
+                    Safari, tap Share, then Add to Home Screen. On Android, open
+                    the site in Chrome and tap Install app or Add to Home screen
+                    from the browser menu.
+                  </div>
+                </div>
+
+                <div className="collapse collapse-arrow border border-base-300 bg-base-100">
+                  <input type="radio" name="login-faq" />
+                  <div className="collapse-title text-base font-medium">
+                    Is data encrypted end to end?
+                  </div>
+                  <div className="collapse-content text-sm leading-6 text-base-content/75">
+                    Not currently. Avoid storing sensitive financial details
+                    unless you are comfortable with that tradeoff.
+                  </div>
+                </div>
+
+                <div className="collapse collapse-arrow border border-base-300 bg-base-100">
+                  <input type="radio" name="login-faq" />
+                  <div className="collapse-title text-base font-medium">
+                    What features are coming next?
+                  </div>
+                  <div className="collapse-content text-sm leading-6 text-base-content/75">
+                    Receipt upload and receipt parsing are planned next. The
+                    goal is to keep new features open and available without paid
+                    tiers.
+                  </div>
+                </div>
               </div>
             </div>
           </section>
