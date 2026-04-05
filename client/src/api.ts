@@ -16,6 +16,20 @@ interface ApiError {
   error: string;
 }
 
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
+export function isAuthenticationFailure(error: unknown) {
+  return error instanceof ApiRequestError && error.status === 401;
+}
+
 export async function callApi(
   endpoint: string,
   options: RequestInit & { token?: string } = {},
@@ -63,7 +77,7 @@ export async function callApi(
       responseRequestId: response.headers.get("X-Request-ID"),
       error,
     });
-    throw new Error(error.error || "API error");
+    throw new ApiRequestError(error.error || "API error", response.status);
   }
 
   console.debug("[api] response ok", {

@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useApiCall } from "../api";
+import { isAuthenticationFailure, useApiCall } from "../api";
 import type {
   ContactInvite,
   Group,
@@ -17,6 +17,7 @@ import type {
   ProfileForm,
   TransactionColumnType,
 } from "../types";
+import { getBaseUrl, isUnauthenticatedPath } from "../utils/authRoutes";
 
 interface AppDataContextValue {
   bootstrapping: boolean;
@@ -65,7 +66,7 @@ function readRememberedGroupId() {
 }
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuth0();
+  const { isAuthenticated, logout } = useAuth0();
   const apiCall = useApiCall();
   const [bootstrapping, setBootstrapping] = useState(true);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -293,6 +294,18 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         ]);
       } catch (error) {
         console.error("Failed to initialize app:", error);
+
+        if (isAuthenticationFailure(error)) {
+          const returnTo = getBaseUrl();
+
+          if (!isUnauthenticatedPath(window.location.pathname)) {
+            logout({ logoutParams: { returnTo } });
+            return;
+          }
+
+          window.location.replace(returnTo);
+          return;
+        }
       } finally {
         setBootstrapping(false);
       }
@@ -301,6 +314,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     initialize();
   }, [
     isAuthenticated,
+    logout,
     apiCall,
     refreshGroups,
     refreshProfile,
