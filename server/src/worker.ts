@@ -11,15 +11,17 @@ type WorkerBindings = {
 };
 
 function getFrontendBaseUrl(env: WorkerBindings) {
-  return env.PUBLIC_FRONTEND_URL || env.APP_BASE_URL || "http://localhost:5173";
+  return env.APP_BASE_URL || env.PUBLIC_FRONTEND_URL || "http://localhost:5173";
 }
 
 function getAllowedCorsOrigins(env: WorkerBindings): string[] {
   const origins = new Set<string>(["http://localhost:5173"]);
-  const publicUrl = env.PUBLIC_FRONTEND_URL || env.APP_BASE_URL;
 
-  if (publicUrl) {
-    origins.add(publicUrl.replace(/\/$/, ""));
+  const configuredOrigins = [env.PUBLIC_FRONTEND_URL, env.APP_BASE_URL];
+  for (const origin of configuredOrigins) {
+    if (origin) {
+      origins.add(origin.replace(/\/$/, ""));
+    }
   }
 
   return Array.from(origins);

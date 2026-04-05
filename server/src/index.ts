@@ -8,8 +8,8 @@ initializeDB();
 
 function getFrontendBaseUrl() {
   return (
-    process.env.PUBLIC_FRONTEND_URL ||
     process.env.APP_BASE_URL ||
+    process.env.PUBLIC_FRONTEND_URL ||
     process.env.FRONTEND_URL ||
     "http://localhost:5173"
   );
@@ -21,9 +21,16 @@ function getAllowedCorsOrigins(): string[] {
     "http://localhost:3000",
   ]);
 
-  const publicUrl = process.env.PUBLIC_FRONTEND_URL;
-  if (publicUrl) {
-    origins.add(publicUrl.replace(/\/$/, ""));
+  const configuredOrigins = [
+    process.env.PUBLIC_FRONTEND_URL,
+    process.env.APP_BASE_URL,
+    process.env.FRONTEND_URL,
+  ];
+
+  for (const origin of configuredOrigins) {
+    if (origin) {
+      origins.add(origin.replace(/\/$/, ""));
+    }
   }
 
   return Array.from(origins);
