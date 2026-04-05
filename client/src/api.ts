@@ -1,12 +1,12 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { useCallback, useEffect, useState } from "react";
 
-// Public backend URL - used for API calls
-// Try PUBLIC_BACKEND_URL first (for production), then fall back to API_URL (for dev), then localhost
+// API calls use explicit backend URLs when configured.
+// In production, default to same-origin so Cloudflare Pages Functions can proxy /api/*.
 const API_URL =
   import.meta.env.VITE_PUBLIC_BACKEND_URL ||
   import.meta.env.VITE_API_URL ||
-  "http://localhost:3000";
+  (import.meta.env.PROD ? "" : "http://localhost:3000");
 
 function createRequestId() {
   return `web_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
