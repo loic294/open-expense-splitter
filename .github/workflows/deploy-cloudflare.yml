@@ -112,6 +112,27 @@ jobs:
         working-directory: client
         run: npm install
 
+      - name: Inject backend URL into frontend Wrangler config
+        working-directory: client
+        env:
+          CF_WORKER_URL: ${{ vars.CF_WORKER_URL }}
+        run: |
+          if [ -z "$CF_WORKER_URL" ]; then
+            echo "Error: Missing GitHub variable CF_WORKER_URL"
+            echo "Set it in Settings -> Secrets and variables -> Actions -> Variables"
+            exit 1
+          fi
+          sed -i.bak "s|REPLACE_WITH_CF_WORKER_URL|$CF_WORKER_URL|g" wrangler.toml
+
+      - name: Validate frontend Wrangler config
+        working-directory: client
+        run: |
+          if grep -q 'REPLACE_WITH_CF_WORKER_URL' wrangler.toml; then
+            echo "Error: client/wrangler.toml still contains REPLACE_WITH_CF_WORKER_URL"
+            echo "Set GitHub variable CF_WORKER_URL"
+            exit 1
+          fi
+
       - name: Build frontend
         working-directory: client
         run: npm run build

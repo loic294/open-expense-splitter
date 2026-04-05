@@ -1,2 +1,8 @@
 name = "open-expense-splitter"
 pages_build_output_dir = "dist"
+compatibility_date = "2026-04-05"
+
+[vars]
+# Backend API base URL used by client/functions/api/[[path]].ts
+# Example: https://open-expense-splitter-api.<your-account>.workers.dev
+PUBLIC_BACKEND_URL = "REPLACE_WITH_CF_WORKER_URL"
