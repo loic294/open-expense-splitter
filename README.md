@@ -27,13 +27,10 @@ See **[Quick Start Wiki](https://github.com/loic294/open-expense-splitter/wiki/Q
 
 See [Set up Auth0](https://github.com/loic294/open-expense-splitter/wiki/Installation) for required environment variables.
 
-### Deploy the backend
-
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/loic294/open-expense-splitter/tree/main/server)
-
-### Deploy the frontend
-
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/loic294/open-expense-splitter/tree/main/client)
+| Service      | Deploy                                                                                                                                                                                |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Backend**  | [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/loic294/open-expense-splitter/tree/main/server) |
+| **Frontend** | [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/loic294/open-expense-splitter/tree/main/client) |
 
 ## Documentation
 
