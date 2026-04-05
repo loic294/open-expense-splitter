@@ -8,6 +8,9 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.png", "apple-touch-icon.png"],
+      devOptions: {
+        enabled: true,
+      },
       manifest: {
         name: "Open Expense Splitter",
         short_name: "Expense Splitter",
