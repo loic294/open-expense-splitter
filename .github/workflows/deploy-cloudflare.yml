@@ -14,6 +14,8 @@ on:
 # Required repository variables (Settings → Variables → Actions):
 #   AUTH0_DOMAIN          — e.g. yourapp.auth0.com
 #   AUTH0_CLIENT_ID       — Auth0 SPA client ID
+#   PUBLIC_FRONTEND_URL   — public Pages hostname, e.g. https://open-expense-splitter.pages.dev
+#   APP_BASE_URL          — canonical frontend URL, e.g. https://open-expense-splitter.loicba.me
 #   CF_WORKER_URL         — URL of the deployed Worker, e.g. https://open-expense-splitter-api.<subdomain>.workers.dev
 #
 # One-time setup (run locally before the first deploy):
@@ -65,11 +67,31 @@ jobs:
           sed -i.bak "s|YOUR_AUTH0_DOMAIN.auth0.com|$AUTH0_DOMAIN|g" wrangler.toml
           sed -i.bak "s|YOUR_AUTH0_CLIENT_ID|$AUTH0_CLIENT_ID|g" wrangler.toml
 
+      - name: Inject frontend URLs into Wrangler config
+        env:
+          ACTIONS_VARS_JSON: ${{ toJson(vars) }}
+        run: |
+          PUBLIC_FRONTEND_URL=$(node -e 'const vars = JSON.parse(process.env.ACTIONS_VARS_JSON || "{}"); process.stdout.write(vars.PUBLIC_FRONTEND_URL || "")')
+          APP_BASE_URL=$(node -e 'const vars = JSON.parse(process.env.ACTIONS_VARS_JSON || "{}"); process.stdout.write(vars.APP_BASE_URL || "")')
+
+          if [ -z "$PUBLIC_FRONTEND_URL" ] || [ -z "$APP_BASE_URL" ]; then
+            echo "Error: Missing GitHub variables PUBLIC_FRONTEND_URL or APP_BASE_URL"
+            echo "Set them in Settings -> Secrets and variables -> Actions -> Variables"
+            exit 1
+          fi
+          sed -i.bak "s|REPLACE_WITH_PUBLIC_FRONTEND_URL|$PUBLIC_FRONTEND_URL|g" wrangler.toml
+          sed -i.bak "s|REPLACE_WITH_APP_BASE_URL|$APP_BASE_URL|g" wrangler.toml
+
       - name: Validate Wrangler config
         run: |
           if grep -q 'REPLACE_WITH_YOUR_D1_DATABASE_ID' wrangler.toml; then
             echo "Error: server/wrangler.toml still contains REPLACE_WITH_YOUR_D1_DATABASE_ID"
             echo "Set GitHub secret CF_D1_DATABASE_ID to your D1 UUID"
+            exit 1
+          fi
+          if grep -q 'REPLACE_WITH_PUBLIC_FRONTEND_URL' wrangler.toml || grep -q 'REPLACE_WITH_APP_BASE_URL' wrangler.toml; then
+            echo "Error: server/wrangler.toml still contains frontend URL placeholder values"
+            echo "Set GitHub variables PUBLIC_FRONTEND_URL and APP_BASE_URL"
             exit 1
           fi
           if grep -q 'YOUR_AUTH0_DOMAIN' wrangler.toml || grep -q 'YOUR_AUTH0_CLIENT_ID' wrangler.toml; then

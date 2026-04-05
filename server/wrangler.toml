@@ -13,9 +13,9 @@ migrations_dir = "migrations"
 # Non-secret configuration. Set the correct values for your deployment.
 [vars]
 # Public Pages hostname allowed for CORS.
-PUBLIC_FRONTEND_URL = "https://open-expense-splitter.pages.dev"
+PUBLIC_FRONTEND_URL = "REPLACE_WITH_PUBLIC_FRONTEND_URL"
 # Canonical frontend URL used for CORS and generated links.
-APP_BASE_URL = "https://open-expense-splitter.loicba.me"
+APP_BASE_URL = "REPLACE_WITH_APP_BASE_URL"
 AUTH0_DOMAIN = "YOUR_AUTH0_DOMAIN.auth0.com"
 AUTH0_CLIENT_ID = "YOUR_AUTH0_CLIENT_ID"
 
