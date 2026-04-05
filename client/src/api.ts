@@ -77,46 +77,33 @@ export async function callApi(
 }
 
 export function useApiCall() {
-  const { getAccessTokenSilently, getIdTokenClaims } = useAuth0();
+  const { getIdTokenClaims } = useAuth0();
 
   return useCallback(
     async (endpoint: string, options: RequestInit = {}) => {
-      const audience = import.meta.env.VITE_AUTH0_AUDIENCE;
       let token: string | null = null;
-      let tokenSource: "access-token" | "id-token" | "none" = "none";
+      let tokenSource: "id-token" | "none" = "none";
 
-      if (audience) {
-        console.debug("[auth] using access token with audience:", audience);
-        token = await getAccessTokenSilently({
-          authorizationParams: { audience },
-        }).catch((e) => {
-          console.error("[auth] getAccessTokenSilently failed:", e);
-          return null;
+      const claims = await getIdTokenClaims().catch((e) => {
+        console.error("[auth] getIdTokenClaims failed:", e);
+        return null;
+      });
+      token = claims?.__raw ?? null;
+      if (token) {
+        const parts = token.split(".");
+        const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+        const payload = JSON.parse(
+          atob(b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), "=")),
+        );
+        console.debug("[auth] ID token payload:", {
+          iss: payload.iss,
+          aud: payload.aud,
+          sub: payload.sub,
+          exp: new Date(payload.exp * 1000).toISOString(),
         });
-        tokenSource = token ? "access-token" : "none";
+        tokenSource = "id-token";
       } else {
-        // No custom API configured — use the ID token (always a verifiable JWT)
-        const claims = await getIdTokenClaims().catch((e) => {
-          console.error("[auth] getIdTokenClaims failed:", e);
-          return null;
-        });
-        token = claims?.__raw ?? null;
-        if (token) {
-          const parts = token.split(".");
-          const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-          const payload = JSON.parse(
-            atob(b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), "=")),
-          );
-          console.debug("[auth] ID token payload:", {
-            iss: payload.iss,
-            aud: payload.aud,
-            sub: payload.sub,
-            exp: new Date(payload.exp * 1000).toISOString(),
-          });
-          tokenSource = "id-token";
-        } else {
-          console.warn("[auth] no ID token available");
-        }
+        console.warn("[auth] no ID token available");
       }
 
       console.debug("[api] calling", {
@@ -127,7 +114,7 @@ export function useApiCall() {
       });
       return callApi(endpoint, { ...options, token: token || undefined });
     },
-    [getAccessTokenSilently, getIdTokenClaims],
+    [getIdTokenClaims],
   );
 }
 

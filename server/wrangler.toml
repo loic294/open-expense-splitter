@@ -17,7 +17,6 @@ PUBLIC_FRONTEND_URL = "https://open-expense-splitter.pages.dev"
 APP_BASE_URL = "https://open-expense-splitter.pages.dev"
 AUTH0_DOMAIN = "YOUR_AUTH0_DOMAIN.auth0.com"
 AUTH0_CLIENT_ID = "YOUR_AUTH0_CLIENT_ID"
-# AUTH0_AUDIENCE = "YOUR_API_IDENTIFIER"  # uncomment if using a custom API audience
 
 # Secrets (never commit these — set them via CLI or the Cloudflare dashboard):
 #   npx wrangler@4 secret put AUTH0_DOMAIN

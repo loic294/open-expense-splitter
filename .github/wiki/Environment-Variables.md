@@ -12,9 +12,6 @@ AUTH0_DOMAIN=your-domain.auth0.com
 AUTH0_CLIENT_ID=your-client-id
 AUTH0_CLIENT_SECRET=your-client-secret
 
-# ====== Optional: Auth0 API Audience ======
-AUTH0_AUDIENCE=
-
 # ====== Optional: Production URLs ======
 PUBLIC_FRONTEND_URL=https://app.example.com
 PUBLIC_BACKEND_URL=https://api.example.com
@@ -30,7 +27,6 @@ PUBLIC_BACKEND_URL=https://api.example.com
 VITE_API_URL=http://localhost:3000
 VITE_AUTH0_DOMAIN=your-domain.auth0.com
 VITE_AUTH0_CLIENT_ID=your-client-id
-VITE_AUTH0_AUDIENCE=
 
 # Production (optional)
 VITE_PUBLIC_BACKEND_URL=https://api.example.com
@@ -45,7 +41,6 @@ NODE_ENV=development
 AUTH0_DOMAIN=your-domain.auth0.com
 AUTH0_CLIENT_ID=your-client-id
 AUTH0_CLIENT_SECRET=your-client-secret
-AUTH0_AUDIENCE=
 
 # Production (optional)
 PUBLIC_FRONTEND_URL=https://app.example.com
@@ -79,7 +74,6 @@ The backend resolves the frontend URL in this order:
 | `AUTH0_DOMAIN`        | Backend, Frontend | Auth0 tenant domain                       | ✅                 |
 | `AUTH0_CLIENT_ID`     | Backend, Frontend | Auth0 application ID                      | ✅                 |
 | `AUTH0_CLIENT_SECRET` | Backend only      | Auth0 application secret                  | ✅ (backend)       |
-| `AUTH0_AUDIENCE`      | Backend, Frontend | Auth0 API audience identifier             | ❌                 |
 | `PUBLIC_BACKEND_URL`  | Frontend          | Public backend URL for production         | ❌                 |
 | `PUBLIC_FRONTEND_URL` | Backend           | Public frontend URL for production        | ❌                 |
 | `PORT`                | Backend only      | Server port (Node.js)                     | ❌ (default: 3000) |

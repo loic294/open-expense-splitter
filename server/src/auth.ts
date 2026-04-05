@@ -4,7 +4,6 @@ import jwksRsa from "jwks-rsa";
 
 const auth0Domain = process.env.AUTH0_DOMAIN;
 const auth0ClientId = process.env.AUTH0_CLIENT_ID;
-const auth0Audience = process.env.AUTH0_AUDIENCE;
 
 if (!auth0Domain || !auth0ClientId) {
   console.warn(
@@ -36,7 +35,9 @@ function getSigningKey(kid: string): Promise<string> {
   });
 }
 
-async function verifyToken(token: string): Promise<AuthContext | null> {
+export async function verifyNodeToken(
+  token: string,
+): Promise<AuthContext | null> {
   if (!auth0Domain || !auth0ClientId || !jwksClient) {
     console.warn("[auth] Auth0 not configured, skipping verification");
     return null;
@@ -69,7 +70,7 @@ async function verifyToken(token: string): Promise<AuthContext | null> {
     console.debug(
       "[auth] expected: iss=https://%s/ aud=%s",
       auth0Domain,
-      auth0Audience || auth0ClientId,
+      auth0ClientId,
     );
 
     const signingKey = await getSigningKey(decoded.header.kid);
@@ -77,9 +78,7 @@ async function verifyToken(token: string): Promise<AuthContext | null> {
     const verifyOptions: jwt.VerifyOptions = {
       algorithms: ["RS256"],
       issuer: `https://${auth0Domain}/`,
-      // When a custom API audience is set, verify access tokens against it.
-      // Otherwise accept ID tokens, whose audience is the Auth0 client ID.
-      audience: auth0Audience || auth0ClientId,
+      audience: auth0ClientId,
     };
 
     const payload = jwt.verify(
@@ -125,7 +124,7 @@ export async function authMiddleware(
   }
 
   const token = authHeader.replace("Bearer ", "");
-  const auth = await verifyToken(token);
+  const auth = await verifyNodeToken(token);
 
   if (!auth) {
     console.warn("[auth] token rejected for %s %s", method, path);
@@ -150,4 +149,4 @@ export function requireAuth(c: Context): AuthContext {
   return auth;
 }
 
-export default { verifyToken, authMiddleware, requireAuth };
+export default { verifyNodeToken, authMiddleware, requireAuth };

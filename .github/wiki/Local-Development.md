@@ -23,7 +23,6 @@ cp .env.example .env.local
 VITE_API_URL=http://localhost:3000
 VITE_AUTH0_DOMAIN=your-domain.auth0.com
 VITE_AUTH0_CLIENT_ID=your-client-id
-VITE_AUTH0_AUDIENCE=your-api-identifier  # optional
 ```
 
 See [Installation](Installation.md) to set up Auth0.
@@ -61,7 +60,6 @@ NODE_ENV=development
 AUTH0_DOMAIN=your-domain.auth0.com
 AUTH0_CLIENT_ID=your-client-id
 AUTH0_CLIENT_SECRET=your-client-secret
-AUTH0_AUDIENCE=your-api-identifier  # optional
 PUBLIC_FRONTEND_URL=http://localhost:5173
 ```
 
