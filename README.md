@@ -20,6 +20,13 @@ A full-stack application for tracking and splitting spending across batches. Bui
 - 📱 **Responsive UI**: Modern React interface with Tailwind-inspired styling
 - 🚀 **Hot Reload**: Development with instant reload
 
+## Frontend Architecture
+
+- Keep `client/src/App.tsx` limited to providers, router setup, and shared layouts.
+- Put page-level behavior in `client/src/pages/`.
+- Put reusable feature logic and UI in `client/src/components/`.
+- Prefer route-based navigation for flows like dashboard, profile, group creation, and group editing instead of toggling sections on one page.
+
 ## Project Structure
 
 ```

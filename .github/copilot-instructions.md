@@ -213,6 +213,16 @@ Then use `docker-compose -f docker-compose.yml up` with production-optimized env
 - Do not override or restyle default DaisyUI component classes globally.
 - Prefer local container/layout styling over global element overrides.
 
+### Frontend Architecture Expectations
+
+- Keep `client/src/App.tsx` as a thin composition root only.
+- `App.tsx` may wire providers, router setup, and shared layouts, but it must not hold feature state, data fetching, business logic, or page-specific handlers.
+- Put route-specific behavior in `client/src/pages/`.
+- Put reusable UI and feature logic in focused components under `client/src/components/`.
+- Prefer route-based navigation and dedicated pages over conditionally showing or hiding large sections inside one main page.
+- If a flow has states like dashboard, profile, create, or edit, model them as routes first instead of top-level flags such as `currentView`, `showForm`, or similar in `App.tsx`.
+- When refactoring, move logic downward into the smallest page or component that owns it instead of expanding `App.tsx`.
+
 ### Auth0 Login Fails
 
 - Verify domain, client ID in environment variables

@@ -2,6 +2,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { useState } from "react";
 import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAppData } from "../context/AppDataContext";
+import NavbarActionsContext from "../context/NavbarActionsContext";
 
 export default function AppShell() {
   const { logout, user } = useAuth0();
@@ -18,6 +19,9 @@ export default function AppShell() {
   const params = useParams();
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [groupMenuOpen, setGroupMenuOpen] = useState(false);
+  const [navbarActionsEl, setNavbarActionsEl] = useState<HTMLDivElement | null>(
+    null,
+  );
 
   const currentGroup = getGroupById(params.groupId);
   const fallbackGroup = getGroupById(getPreferredGroupId());
@@ -25,146 +29,152 @@ export default function AppShell() {
   const isProfileRoute = location.pathname === "/profile";
 
   return (
-    <div className="min-h-screen bg-base-200">
-      <header className="navbar bg-base-100 border-b border-base-300 px-4 md:px-6">
-        <div className="w-full max-w-6xl mx-auto flex justify-between gap-3">
-          <button
-            type="button"
-            className="text-base md:text-lg font-semibold"
-            onClick={() => {
-              const nextGroupId = activeGroup?.id || getPreferredGroupId();
-              navigate(nextGroupId ? `/groups/${nextGroupId}` : "/");
-            }}
-          >
-            Batch Spending Splitter
-          </button>
-
-          <div className="flex items-center gap-2">
-            <div
-              className={`dropdown dropdown-end ${groupMenuOpen ? "dropdown-open" : ""}`}
+    <NavbarActionsContext.Provider value={navbarActionsEl}>
+      <div className="min-h-screen bg-base-200">
+        <header className="navbar bg-base-100 border-b border-base-300 px-4 md:px-6 sticky top-0 z-10">
+          <div className="w-full flex justify-between gap-3">
+            <button
+              type="button"
+              className="text-base md:text-lg font-semibold"
+              onClick={() => {
+                const nextGroupId = activeGroup?.id || getPreferredGroupId();
+                navigate(nextGroupId ? `/groups/${nextGroupId}` : "/");
+              }}
             >
-              <button
-                type="button"
-                className="btn btn-sm gap-2"
-                onClick={() => setGroupMenuOpen((open) => !open)}
+              Batch Spending Splitter
+            </button>
+
+            <div className="flex items-center gap-2">
+              <div
+                ref={(el) => setNavbarActionsEl(el)}
+                className="flex items-center gap-2"
+              />
+              <div
+                className={`dropdown dropdown-end ${groupMenuOpen ? "dropdown-open" : ""}`}
               >
-                <span>{activeGroup?.emoji || "💸"}</span>
-                <span className="max-w-40 truncate">
-                  {loadingGroups
-                    ? "Loading groups..."
-                    : activeGroup?.name || "Create your first group"}
-                </span>
-              </button>
-              <ul className="menu dropdown-content z-10 mt-2 w-64 rounded-box border border-base-300 bg-base-100 p-2 shadow-sm">
-                {groups.length > 0 ? (
-                  groups.map((group) => (
-                    <li key={group.id}>
-                      <button
-                        type="button"
-                        className={
-                          activeGroup?.id === group.id ? "menu-active" : ""
-                        }
-                        onClick={() => {
-                          rememberGroupId(group.id);
-                          setGroupMenuOpen(false);
-                          navigate(`/groups/${group.id}`);
-                        }}
-                      >
-                        <span>{group.emoji}</span>
-                        <span>{group.name}</span>
-                      </button>
+                <button
+                  type="button"
+                  className="btn btn-sm gap-2"
+                  onClick={() => setGroupMenuOpen((open) => !open)}
+                >
+                  <span>{activeGroup?.emoji || "💸"}</span>
+                  <span className="max-w-40 truncate">
+                    {loadingGroups
+                      ? "Loading groups..."
+                      : activeGroup?.name || "Create your first group"}
+                  </span>
+                </button>
+                <ul className="menu dropdown-content z-10 mt-2 w-64 rounded-box border border-base-300 bg-base-100 p-2 shadow-sm">
+                  {groups.length > 0 ? (
+                    groups.map((group) => (
+                      <li key={group.id}>
+                        <button
+                          type="button"
+                          className={
+                            activeGroup?.id === group.id ? "menu-active" : ""
+                          }
+                          onClick={() => {
+                            rememberGroupId(group.id);
+                            setGroupMenuOpen(false);
+                            navigate(`/groups/${group.id}`);
+                          }}
+                        >
+                          <span>{group.emoji}</span>
+                          <span>{group.name}</span>
+                        </button>
+                      </li>
+                    ))
+                  ) : (
+                    <li className="menu-title">
+                      <span>No groups yet</span>
                     </li>
-                  ))
-                ) : (
-                  <li className="menu-title">
-                    <span>No groups yet</span>
-                  </li>
-                )}
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGroupMenuOpen(false);
-                      navigate("/groups/new");
-                    }}
-                  >
-                    Create new group
-                  </button>
-                </li>
-                {activeGroup?.canEdit && (
+                  )}
                   <li>
                     <button
                       type="button"
                       onClick={() => {
                         setGroupMenuOpen(false);
-                        navigate(`/groups/${activeGroup.id}/edit`);
+                        navigate("/groups/new");
                       }}
                     >
-                      Edit current group
+                      Create new group
                     </button>
                   </li>
-                )}
-              </ul>
-            </div>
+                  {activeGroup?.canEdit && (
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGroupMenuOpen(false);
+                          navigate(`/groups/${activeGroup.id}/edit`);
+                        }}
+                      >
+                        Edit current group
+                      </button>
+                    </li>
+                  )}
+                </ul>
+              </div>
 
-            <div
-              className={`dropdown dropdown-end ${profileMenuOpen ? "dropdown-open" : ""}`}
-            >
-              <button
-                type="button"
-                className="btn btn-sm gap-2"
-                onClick={() => setProfileMenuOpen((open) => !open)}
+              <div
+                className={`dropdown dropdown-end ${profileMenuOpen ? "dropdown-open" : ""}`}
               >
-                <div className="avatar">
-                  <div className="w-6 rounded-md bg-base-200">
-                    {profile.picture ? (
-                      <img src={profile.picture} alt="Profile" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-[10px] text-base-content/50">
-                        U
-                      </div>
-                    )}
+                <button
+                  type="button"
+                  className="btn btn-sm gap-2"
+                  onClick={() => setProfileMenuOpen((open) => !open)}
+                >
+                  <div className="avatar">
+                    <div className="w-6 rounded-md bg-base-200">
+                      {profile.picture ? (
+                        <img src={profile.picture} alt="Profile" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-[10px] text-base-content/50">
+                          U
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <span className="text-sm text-base-content/70 hidden sm:inline max-w-40 truncate">
-                  {profile.name || profile.email || user?.name || user?.email}
-                </span>
-              </button>
-              <ul className="menu dropdown-content z-10 mt-2 w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-sm">
-                <li>
-                  <button
-                    type="button"
-                    className={isProfileRoute ? "menu-active" : ""}
-                    onClick={() => {
-                      setProfileMenuOpen(false);
-                      navigate("/profile");
-                    }}
-                  >
-                    Profile
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProfileMenuOpen(false);
-                      logout({
-                        logoutParams: { returnTo: window.location.origin },
-                      });
-                    }}
-                  >
-                    Logout
-                  </button>
-                </li>
-              </ul>
+                  <span className="text-sm text-base-content/70 hidden sm:inline max-w-40 truncate">
+                    {profile.name || profile.email || user?.name || user?.email}
+                  </span>
+                </button>
+                <ul className="menu dropdown-content z-10 mt-2 w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-sm">
+                  <li>
+                    <button
+                      type="button"
+                      className={isProfileRoute ? "menu-active" : ""}
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        navigate("/profile");
+                      }}
+                    >
+                      Profile
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        logout({
+                          logoutParams: { returnTo: window.location.origin },
+                        });
+                      }}
+                    >
+                      Logout
+                    </button>
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="max-w-6xl mx-auto w-full p-3 md:p-4">
-        <Outlet />
-      </main>
-    </div>
+        <main className="w-full p-3 md:p-4">
+          <Outlet />
+        </main>
+      </div>
+    </NavbarActionsContext.Provider>
   );
 }

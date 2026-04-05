@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useApiCall } from "../api";
+import { useNavbarActionsTarget } from "../context/NavbarActionsContext";
 import type {
   Group,
   GroupMember,
@@ -11,7 +13,9 @@ import {
   createDefaultSplitData,
   getDateInputValue,
   memberName,
+  normalizeCurrency,
   normalizeTransaction,
+  SUPPORTED_CURRENCIES,
   splitLabel,
 } from "../utils/spending";
 import {
@@ -301,8 +305,15 @@ function CsvImportModal({
   );
 }
 
-export default function TransactionSection({ group }: { group: Group }) {
+export default function TransactionSection({
+  group,
+  onTransactionsChange,
+}: {
+  group: Group;
+  onTransactionsChange?: (transactions: Transaction[]) => void;
+}) {
   const apiCall = useApiCall();
+  const navbarTarget = useNavbarActionsTarget();
   const saveTimersRef = useRef<Record<string, number>>({});
   const csvInputRef = useRef<HTMLInputElement | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -327,6 +338,14 @@ export default function TransactionSection({ group }: { group: Group }) {
   } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importingCsv, setImportingCsv] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{
+    transactionId: string;
+    transactionName: string;
+  } | null>(null);
+
+  useEffect(() => {
+    onTransactionsChange?.(transactions);
+  }, [transactions, onTransactionsChange]);
 
   const activeSplitTransaction =
     transactions.find(
@@ -435,6 +454,7 @@ export default function TransactionSection({ group }: { group: Group }) {
           body: JSON.stringify({
             batchId: transaction.batchId,
             amount: transaction.amount,
+            currency: transaction.currency,
             name: transaction.name,
             description: transaction.description,
             transactionDate: transaction.transactionDate,
@@ -465,6 +485,7 @@ export default function TransactionSection({ group }: { group: Group }) {
           body: JSON.stringify({
             batchId: transaction.batchId,
             amount: transaction.amount,
+            currency: transaction.currency,
             name: transaction.name,
             description: transaction.description,
             transactionDate: transaction.transactionDate,
@@ -546,6 +567,7 @@ export default function TransactionSection({ group }: { group: Group }) {
       id: `draft_${Date.now()}`,
       batchId: group.id,
       amount: 0,
+      currency: "USD",
       name: "",
       description: "",
       transactionDate: defaultDate,
@@ -614,6 +636,19 @@ export default function TransactionSection({ group }: { group: Group }) {
     }
   };
 
+  const deleteTransaction = async (transactionId: string) => {
+    setSavingTransactions((prev) => ({ ...prev, [transactionId]: true }));
+    try {
+      await apiCall(`/api/spendings/${transactionId}`, { method: "DELETE" });
+      setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
+    } catch (error) {
+      console.error("[transactions] delete failed", { transactionId, error });
+    } finally {
+      setSavingTransactions((prev) => ({ ...prev, [transactionId]: false }));
+      setDeleteConfirmation(null);
+    }
+  };
+
   const handleImport = async () => {
     if (!importState) {
       return;
@@ -675,33 +710,35 @@ export default function TransactionSection({ group }: { group: Group }) {
 
   return (
     <>
+      {navbarTarget &&
+        createPortal(
+          <div className="join">
+            <button
+              type="button"
+              className="btn btn-sm join-item"
+              onClick={openCsvPicker}
+            >
+              Import CSV
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-primary join-item"
+              onClick={createTransaction}
+            >
+              New expense
+            </button>
+          </div>,
+          navbarTarget,
+        )}
       <section className="card card-border bg-base-100 rounded-md w-full">
         <div className="card-body p-3 md:p-4 gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">{group.emoji}</span>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xl">{group.emoji}</span>
-                <h2 className="card-title text-base">{group.name}</h2>
-              </div>
+              <h2 className="card-title text-base">{group.name}</h2>
               <p className="text-sm text-base-content/70">
                 {group.members.length} member(s)
               </p>
-            </div>
-            <div className="join">
-              <button
-                type="button"
-                className="btn btn-sm join-item"
-                onClick={openCsvPicker}
-              >
-                Import CSV
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm btn-primary join-item"
-                onClick={createTransaction}
-              >
-                New transaction
-              </button>
             </div>
           </div>
           {importError && (
@@ -727,138 +764,72 @@ export default function TransactionSection({ group }: { group: Group }) {
               <span className="loading loading-spinner loading-md" />
             </div>
           ) : transactions.length > 0 ? (
-            <div className="flex flex-col gap-3">
-              {transactions.map((transaction) => (
-                <div
-                  key={transaction.id}
-                  className="rounded-md border border-base-300 bg-base-100 p-3"
-                >
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <fieldset className="fieldset">
-                      <legend className="fieldset-legend">Amount</legend>
-                      <input
-                        className="input input-sm w-full"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={transaction.amount}
-                        onChange={(event) =>
-                          updateTransaction(transaction.id, (item) => ({
-                            ...item,
-                            amount: Number(event.target.value || 0),
-                          }))
-                        }
-                      />
-                    </fieldset>
-
-                    <fieldset className="fieldset">
-                      <legend className="fieldset-legend">Name</legend>
-                      <input
-                        className="input input-sm w-full"
-                        value={transaction.name}
-                        onChange={(event) =>
-                          updateTransaction(transaction.id, (item) => ({
-                            ...item,
-                            name: event.target.value,
-                          }))
-                        }
-                        placeholder="Dinner"
-                      />
-                    </fieldset>
-
-                    <fieldset className="fieldset">
-                      <legend className="fieldset-legend">Description</legend>
-                      <input
-                        className="input input-sm w-full"
-                        value={transaction.description}
-                        onChange={(event) =>
-                          updateTransaction(transaction.id, (item) => ({
-                            ...item,
-                            description: event.target.value,
-                          }))
-                        }
-                        placeholder="Optional"
-                      />
-                    </fieldset>
-
-                    <fieldset className="fieldset">
-                      <legend className="fieldset-legend">
-                        Transaction date
-                      </legend>
-                      <input
-                        className="input input-sm w-full"
-                        type="date"
-                        value={transaction.transactionDate}
-                        onChange={(event) =>
-                          updateTransaction(transaction.id, (item) => ({
-                            ...item,
-                            transactionDate: event.target.value,
-                          }))
-                        }
-                      />
-                    </fieldset>
-
-                    <fieldset className="fieldset">
-                      <legend className="fieldset-legend">Category</legend>
-                      <input
-                        className="input input-sm w-full"
-                        list={categoryListId}
-                        value={transaction.category}
-                        onChange={(event) =>
-                          updateTransaction(transaction.id, (item) => ({
-                            ...item,
-                            category: event.target.value,
-                          }))
-                        }
-                        placeholder="Food"
-                      />
-                    </fieldset>
-
-                    <fieldset className="fieldset">
-                      <legend className="fieldset-legend">Split</legend>
-                      <button
-                        type="button"
-                        className="btn btn-sm justify-start"
-                        onClick={() => {
-                          setActiveSplitTransactionId(transaction.id);
-                          setSplitEditor({
-                            splitType: transaction.splitType,
-                            splitData: {
-                              includedMemberIds: [
-                                ...transaction.splitData.includedMemberIds,
-                              ],
-                              values: { ...transaction.splitData.values },
-                            },
-                          });
-                        }}
-                      >
-                        {splitLabel(transaction, group.members)}
-                      </button>
-                    </fieldset>
-
-                    <fieldset className="fieldset">
-                      <legend className="fieldset-legend">Paid by</legend>
-                      <select
-                        className="select select-sm w-full"
-                        value={transaction.paidById}
-                        onChange={(event) =>
-                          updateTransaction(transaction.id, (item) => ({
-                            ...item,
-                            paidById: event.target.value,
-                          }))
-                        }
-                      >
-                        {group.members.map((member) => (
-                          <option key={member.id} value={member.id}>
-                            {memberName(member)}
-                          </option>
-                        ))}
-                      </select>
-                    </fieldset>
-
-                    <fieldset className="fieldset">
-                      <legend className="fieldset-legend">Advanced</legend>
-                      <div className="flex items-center gap-2">
+            <div className="overflow-x-auto rounded-md border border-base-300">
+              <table className="table table-zebra [&_td]:px-2 [&_td]:py-2 [&_th]:px-2 [&_th]:py-2 w-full [&_td]:align-middle">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Amount</th>
+                    <th>Currency</th>
+                    <th>Split</th>
+                    <th>Paid by</th>
+                    <th>Date</th>
+                    <th>Category</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.map((transaction) => (
+                    <tr key={transaction.id}>
+                      <td>
+                        <input
+                          className="input input-sm w-full min-w-28"
+                          value={transaction.name}
+                          onChange={(event) =>
+                            updateTransaction(transaction.id, (item) => ({
+                              ...item,
+                              name: event.target.value,
+                            }))
+                          }
+                          placeholder="Dinner"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="input input-sm w-full min-w-20"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={transaction.amount}
+                          onChange={(event) =>
+                            updateTransaction(transaction.id, (item) => ({
+                              ...item,
+                              amount: Number(event.target.value || 0),
+                            }))
+                          }
+                        />
+                      </td>
+                      <td>
+                        <select
+                          className="select select-sm w-full min-w-16"
+                          value={transaction.currency}
+                          onChange={(event) =>
+                            updateTransaction(transaction.id, (item) => ({
+                              ...item,
+                              currency: normalizeCurrency(event.target.value),
+                            }))
+                          }
+                        >
+                          {SUPPORTED_CURRENCIES.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
                         <button
                           type="button"
                           className="btn btn-sm"
@@ -875,16 +846,91 @@ export default function TransactionSection({ group }: { group: Group }) {
                             });
                           }}
                         >
-                          Advanced
+                          {splitLabel(transaction, group.members)}
                         </button>
-                        {savingTransactions[transaction.id] && (
-                          <span className="loading loading-spinner loading-xs" />
-                        )}
-                      </div>
-                    </fieldset>
-                  </div>
-                </div>
-              ))}
+                      </td>
+                      <td>
+                        <select
+                          className="select select-sm w-full min-w-24"
+                          value={transaction.paidById}
+                          onChange={(event) =>
+                            updateTransaction(transaction.id, (item) => ({
+                              ...item,
+                              paidById: event.target.value,
+                            }))
+                          }
+                        >
+                          {group.members.map((member) => (
+                            <option key={member.id} value={member.id}>
+                              {memberName(member)}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          className="input input-sm w-full min-w-28"
+                          type="date"
+                          value={transaction.transactionDate}
+                          onChange={(event) =>
+                            updateTransaction(transaction.id, (item) => ({
+                              ...item,
+                              transactionDate: event.target.value,
+                            }))
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="input input-sm w-full min-w-20"
+                          list={categoryListId}
+                          value={transaction.category}
+                          onChange={(event) =>
+                            updateTransaction(transaction.id, (item) => ({
+                              ...item,
+                              category: event.target.value,
+                            }))
+                          }
+                          placeholder="Food"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="input input-sm w-full min-w-28"
+                          value={transaction.description}
+                          onChange={(event) =>
+                            updateTransaction(transaction.id, (item) => ({
+                              ...item,
+                              description: event.target.value,
+                            }))
+                          }
+                          placeholder="Optional"
+                        />
+                      </td>
+                      <td className="text-xs text-base-content/60 whitespace-nowrap">
+                        {savingTransactions[transaction.id]
+                          ? "Saving…"
+                          : "Saved"}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm text-error"
+                          onClick={() =>
+                            setDeleteConfirmation({
+                              transactionId: transaction.id,
+                              transactionName:
+                                transaction.name || "this transaction",
+                            })
+                          }
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : (
             <div className="alert alert-soft">
@@ -994,6 +1040,39 @@ export default function TransactionSection({ group }: { group: Group }) {
           }}
           onImport={handleImport}
         />
+      )}
+
+      {deleteConfirmation && (
+        <dialog className="modal modal-open">
+          <div className="modal-box max-w-md">
+            <h3 className="font-semibold text-lg">Delete transaction</h3>
+            <p className="py-3 text-sm text-base-content/70">
+              This will permanently delete &ldquo;
+              {deleteConfirmation.transactionName}&rdquo;.
+            </p>
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => setDeleteConfirmation(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-error"
+                disabled={savingTransactions[deleteConfirmation.transactionId]}
+                onClick={() =>
+                  deleteTransaction(deleteConfirmation.transactionId)
+                }
+              >
+                {savingTransactions[deleteConfirmation.transactionId]
+                  ? "Deleting…"
+                  : "Delete"}
+              </button>
+            </div>
+          </div>
+        </dialog>
       )}
     </>
   );
