@@ -2,6 +2,9 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+ARG VITE_LOGIN_VARIANT=login
+ENV VITE_LOGIN_VARIANT=${VITE_LOGIN_VARIANT}
+
 COPY package*.json ./
 
 RUN npm install --include=optional

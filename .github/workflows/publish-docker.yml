@@ -27,8 +27,10 @@ jobs:
         include:
           - context: ./client
             image: client
+            login_variant: login
           - context: ./server
             image: server
+            login_variant: login
 
     steps:
       - name: Checkout repository
@@ -61,5 +63,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VITE_LOGIN_VARIANT=${{ matrix.login_variant }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

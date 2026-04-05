@@ -2,6 +2,12 @@
 
 Deploy the backend as a **Cloudflare Worker** and frontend as **Cloudflare Pages**.
 
+## Security Notes
+
+- The Cloudflare-hosted deployment uses encryption in transit (TLS) and encryption at rest for D1-managed data. See: https://developers.cloudflare.com/d1/reference/data-security/
+- Self-hosted deployments do not encrypt data at rest by default.
+- Open Expense Splitter has not been vetted by an external third-party security audit. Do not use it for sensitive financial data.
+
 ## Deploy to Cloudflare
 
 See [Set up Auth0](https://github.com/loic294/open-expense-splitter/wiki/Installation) for required environment variables.

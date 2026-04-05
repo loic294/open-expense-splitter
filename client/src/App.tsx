@@ -5,6 +5,7 @@ import GroupCreatePage from "./pages/GroupCreatePage";
 import GroupDashboardPage from "./pages/GroupDashboardPage";
 import GroupEditPage from "./pages/GroupEditPage";
 import GroupInviteConfirmPage from "./pages/GroupInviteConfirmPage";
+import HomePage from "./pages/HomePage";
 import HomeRedirectPage from "./pages/HomeRedirectPage";
 import PlatformInviteConfirmPage from "./pages/PlatformInviteConfirmPage";
 import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
@@ -12,12 +13,18 @@ import ProfilePage from "./pages/ProfilePage";
 import TermsOfServicePage from "./pages/TermsOfServicePage";
 
 export default function App() {
+  const isLoginVariant = import.meta.env.VITE_LOGIN_VARIANT === "login";
+
   return (
     <BrowserRouter>
       <Routes>
         {/* Public routes */}
         <Route path="/terms" element={<TermsOfServicePage />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route
+          path="/home"
+          element={isLoginVariant ? <HomePage /> : <Navigate to="/" replace />}
+        />
 
         {/* Protected routes */}
         <Route element={<AuthGuard />}>

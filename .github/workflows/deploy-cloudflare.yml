@@ -179,6 +179,7 @@ jobs:
           VITE_API_URL: ${{ vars.CF_WORKER_URL }}
           VITE_AUTH0_DOMAIN: ${{ vars.AUTH0_DOMAIN }}
           VITE_AUTH0_CLIENT_ID: ${{ vars.AUTH0_CLIENT_ID }}
+          VITE_LOGIN_VARIANT: home
 
       - name: Ensure Cloudflare Pages project exists
         working-directory: client

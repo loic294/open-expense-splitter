@@ -85,15 +85,31 @@ export default function PrivacyPolicyPage() {
                 <p>
                   We implement appropriate technical and organizational measures
                   to protect your personal information against unauthorized
-                  access, alteration, disclosure, or destruction. Your data is
-                  encrypted in transit (HTTPS).
+                  access, alteration, disclosure, or destruction.
                 </p>
                 <p className="mt-3">
-                  <strong>⚠️ Important:</strong> Data stored in our database is
-                  NOT encrypted at rest. This is an open source project intended
-                  for personal use. Do not use Open Expense Splitter for
-                  sensitive or highly confidential financial information unless
-                  you fully accept the security risks involved.
+                  <strong>Cloudflare-hosted version:</strong> The current public
+                  deployment on Cloudflare uses encryption in transit (TLS) and
+                  encryption at rest for D1-managed data. For details, see{" "}
+                  <a
+                    href="https://developers.cloudflare.com/d1/reference/data-security/"
+                    className="link link-hover"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Cloudflare D1 data security documentation
+                  </a>
+                  .
+                </p>
+                <p className="mt-3">
+                  <strong>Self-hosted version:</strong> Data is not encrypted at
+                  rest by default.
+                </p>
+                <p className="mt-3">
+                  <strong>⚠️ Important:</strong> Open Expense Splitter has not
+                  been vetted by an external third-party security audit. Do not
+                  use this application for sensitive or highly confidential
+                  financial information.
                 </p>
                 <p className="mt-3">
                   While we strive to maintain reasonable security practices, no
@@ -171,8 +187,8 @@ export default function PrivacyPolicyPage() {
                     authorization
                   </li>
                   <li>
-                    <strong>Cloudflare:</strong> The public version of Open
-                    Expense Splitter is hosted on Cloudflare Pages and
+                    <strong>Cloudflare (hosting):</strong> The public version of
+                    Open Expense Splitter is hosted on Cloudflare Pages and
                     Cloudflare Workers. Cloudflare may collect usage and
                     telemetry data such as request patterns, error logs, and
                     performance metrics. Refer to{" "}
@@ -185,6 +201,24 @@ export default function PrivacyPolicyPage() {
                       Cloudflare's Privacy Policy
                     </a>{" "}
                     for details on their data collection practices.
+                  </li>
+                  <li>
+                    <strong>Cloudflare Web Analytics:</strong> The public
+                    version uses{" "}
+                    <a
+                      href="https://developers.cloudflare.com/web-analytics/about/"
+                      className="link link-hover"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Cloudflare Web Analytics
+                    </a>
+                    , a privacy-first analytics tool. It collects only page-load
+                    performance metrics — page views, load times, Core Web
+                    Vitals, referrer, browser and OS type, and country — using
+                    the browser's built-in Performance API. It does not use
+                    cookies, fingerprint users, or collect any personal data.
+                    Cloudflare does not track individual visitors across sites.
                   </li>
                 </ul>
                 <p className="mt-3">

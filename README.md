@@ -14,6 +14,12 @@ A full-stack application for tracking and splitting spending across groups. Buil
 - 🚀 **Hot Reload** - Development with instant reload
 - ☁️ **Serverless Ready** - Deploy to Cloudflare Workers + Pages
 
+## Security Notice
+
+- Cloudflare-hosted deployments (the current public version) use encryption in transit (TLS) and encryption at rest for D1-managed data. See the Cloudflare documentation: https://developers.cloudflare.com/d1/reference/data-security/
+- Self-hosted deployments do not encrypt data at rest by default.
+- This project has not undergone an external third-party security audit. Do not use it for sensitive financial data.
+
 ## Live Demo
 
 **Try it now:** [open-expense-splitter.loicba.me](https://open-expense-splitter.loicba.me)

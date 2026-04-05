@@ -1,11 +1,13 @@
 import { Link } from "react-router-dom";
 
-export default function Footer() {
+export default function Footer({ center = false }: { center?: boolean }) {
   const currentYear = new Date().getFullYear();
 
   return (
     <footer className="footer w-full gap-4 py-4">
-      <nav className="flex flex-wrap justify-start gap-4 text-sm">
+      <nav
+        className={`flex flex-wrap ${center ? "justify-center w-full" : "justify-start"} gap-4 text-sm`}
+      >
         <Link to="/terms" className="link link-hover">
           Terms of Service
         </Link>
@@ -22,7 +24,7 @@ export default function Footer() {
         </a>
 
         <a
-          href="https://github.com/loicba/open-expense-splitter"
+          href="https://github.com/loic294/open-expense-splitter"
           className="link link-hover"
           target="_blank"
           rel="noopener noreferrer"
@@ -31,12 +33,14 @@ export default function Footer() {
         </a>
       </nav>
 
-      <div className="flex flex-row flex-end gap-2 text-xs">
+      <div
+        className={`flex flex-row ${center ? "justify-center w-full" : "justify-end"} gap-2 text-xs`}
+      >
         <p className="font-medium">© {currentYear} Loïc Bellemare-Alford</p>
         <p>
           Licensed under{" "}
           <a
-            href="https://github.com/loicba/batch-spending-splitter/blob/main/LICENSE"
+            href="https://github.com/loic294/open-expense-splitter/blob/main/LICENSE"
             className="link link-hover"
             target="_blank"
             rel="noopener noreferrer"
