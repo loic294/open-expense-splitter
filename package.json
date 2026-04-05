@@ -19,6 +19,7 @@
     "react",
     "hono"
   ],
-  "author": "",
+  "author": "loicba",
+  "license": "CC-BY-NC-4.0",
   "license": "MIT"
 }
