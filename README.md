@@ -4,7 +4,6 @@ A full-stack application for tracking and splitting spending across groups. Buil
 
 <img width="5088" height="3648" alt="image" src="https://github.com/user-attachments/assets/6395598f-fe26-4674-979f-283aeb211fb7" />
 
-
 ## Features
 
 - 🔐 **User Authentication** - Secure login via Auth0
@@ -14,6 +13,12 @@ A full-stack application for tracking and splitting spending across groups. Buil
 - 📱 **Responsive UI** - Modern React interface with daisyUI components
 - 🚀 **Hot Reload** - Development with instant reload
 - ☁️ **Serverless Ready** - Deploy to Cloudflare Workers + Pages
+
+## Live Demo
+
+**Try it now:** [open-expense-splitter.loicba.me](https://open-expense-splitter.loicba.me)
+
+Sign up with Auth0 and start tracking shared expenses right away. No credit card required. Ever.
 
 ## Quick Start
 
