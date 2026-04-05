@@ -136,6 +136,189 @@ export default function LoginPage() {
           </section>
 
           <section className="card card-border bg-base-100 shadow-sm">
+            <div className="card-body gap-4">
+              <div className="space-y-1">
+                <p className="badge badge-soft badge-success w-fit">
+                  Everything included, always free
+                </p>
+                <h2 className="text-2xl font-semibold tracking-tight pt-1">
+                  How we compare
+                </h2>
+                <p className="text-sm leading-6 text-base-content/70">
+                  No tiers, no upsells. Every feature is available to every
+                  user.
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="table table-zebra w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th className="text-base-content/60 font-medium">
+                        Feature
+                      </th>
+                      <th className="text-center">
+                        <span className="text-success font-semibold">
+                          Open Expense Splitter
+                        </span>
+                      </th>
+                      <th className="text-center text-base-content/60 font-medium">
+                        Splitwise
+                      </th>
+                      <th className="text-center text-base-content/60 font-medium">
+                        SettleUp
+                      </th>
+                      <th className="text-center text-base-content/60 font-medium">
+                        Tricount
+                      </th>
+                      <th className="text-center text-base-content/60 font-medium">
+                        SplitMyExpenses
+                      </th>
+                      <th className="text-center text-base-content/60 font-medium">
+                        Splid
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      {
+                        feature: "Unlimited groups",
+                        ours: true,
+                        splitwise: "Limited on free",
+                        settleup: "Limited on free",
+                        tricount: true,
+                        splitmyexpenses: true,
+                        splid: "Limited on free",
+                      },
+                      {
+                        feature: "Expense tracking & balances",
+                        ours: true,
+                        splitwise: true,
+                        settleup: true,
+                        tricount: true,
+                        splitmyexpenses: true,
+                        splid: true,
+                      },
+                      {
+                        feature: "Group invite links",
+                        ours: true,
+                        splitwise: true,
+                        settleup: true,
+                        tricount: true,
+                        splitmyexpenses: false,
+                        splid: true,
+                      },
+                      {
+                        feature: "Multiple currencies",
+                        ours: true,
+                        splitwise: "Pro only",
+                        settleup: "Pro only",
+                        tricount: true,
+                        splitmyexpenses: true,
+                        splid: "Pro only",
+                      },
+                      {
+                        feature: "CSV import",
+                        ours: true,
+                        splitwise: "Pro only",
+                        settleup: false,
+                        tricount: false,
+                        splitmyexpenses: false,
+                        splid: false,
+                      },
+                      {
+                        feature: "No ads",
+                        ours: true,
+                        splitwise: "Pro only",
+                        settleup: "Pro only",
+                        tricount: "Pro only",
+                        splitmyexpenses: true,
+                        splid: "Pro only",
+                      },
+                      {
+                        feature: "Open source",
+                        ours: true,
+                        splitwise: false,
+                        settleup: false,
+                        tricount: false,
+                        splitmyexpenses: false,
+                        splid: false,
+                      },
+                      {
+                        feature: "No subscription required",
+                        ours: true,
+                        splitwise: false,
+                        settleup: false,
+                        tricount: false,
+                        splitmyexpenses: false,
+                        splid: false,
+                      },
+                      {
+                        feature: "Receipt upload",
+                        ours: "Coming soon!",
+                        splitwise: "Pro only",
+                        settleup: "Pro only",
+                        tricount: false,
+                        splitmyexpenses: false,
+                        splid: "Pro only",
+                      },
+                      {
+                        feature: "Receipt parsing",
+                        ours: "Coming soon!",
+                        splitwise: "Pro only",
+                        settleup: false,
+                        tricount: false,
+                        splitmyexpenses: false,
+                        splid: false,
+                      },
+                    ].map(
+                      ({
+                        feature,
+                        ours,
+                        splitwise,
+                        settleup,
+                        tricount,
+                        splitmyexpenses,
+                        splid,
+                      }) => (
+                        <tr key={feature}>
+                          <td className="font-medium">{feature}</td>
+                          {[
+                            ours,
+                            splitwise,
+                            settleup,
+                            tricount,
+                            splitmyexpenses,
+                            splid,
+                          ].map((val, i) => (
+                            <td key={i} className="text-center">
+                              {val === true ? (
+                                <span className="text-success font-bold text-base">
+                                  ✓
+                                </span>
+                              ) : val === false ? (
+                                <span className="text-error font-bold text-base">
+                                  ✗
+                                </span>
+                              ) : (
+                                <span
+                                  className={`badge badge-soft badge-sm ${i === 0 ? "badge-info" : "badge-warning"}`}
+                                >
+                                  {val}
+                                </span>
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ),
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section className="card card-border bg-base-100 shadow-sm">
             <div className="card-body gap-4 md:flex-row md:items-center md:justify-between">
               <div className="space-y-2">
                 <h2 className="text-2xl font-semibold tracking-tight">
