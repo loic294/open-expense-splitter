@@ -8,8 +8,7 @@ database_name = "open-expense-splitter"
 # Replace with the ID from: npx wrangler d1 create open-expense-splitter
 database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 
-[migrations_dir]
-path = "migrations"
+migrations_dir = "migrations"
 
 # Non-secret configuration. Set the correct values for your deployment.
 [vars]
