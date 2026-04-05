@@ -2,7 +2,8 @@
 
 A full-stack application for tracking and splitting spending across groups. Built with React + Vite on the frontend and Node.js + Hono on the backend, with SQLite for persistent data storage and Auth0 for user authentication. Supports deployment to Cloudflare Workers and D1 databases.
 
-<img width="5088" height="3648" alt="image" src="https://github.com/user-attachments/assets/b0fce3f0-dadf-4fed-8de1-ae7f48e4aa12" />
+<img width="5088" height="3648" alt="image" src="https://github.com/user-attachments/assets/6395598f-fe26-4674-979f-283aeb211fb7" />
+
 
 ## Features
 
