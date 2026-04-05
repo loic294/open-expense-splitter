@@ -1,4 +1,4 @@
-# Batch Spending Splitter
+# Better Expense Splitter
 
 A full-stack application for tracking and splitting spending across batches. Built with React + Vite on the frontend and Node.js + Hono on the backend, with SQLite for persistent data storage and Auth0 for user authentication.
 
@@ -87,7 +87,7 @@ batch-spending-splitter/
 4. **Create an API**:
    - Go to Applications > APIs
    - Click "Create API"
-   - Name: "Batch Spending Splitter API"
+   - Name: "Better Expense Splitter API"
    - Identifier: `https://your-auth0-domain/api/v2/` (or any unique identifier)
 
 5. **Get Your Credentials**:

@@ -39,7 +39,7 @@ export default function AppShell() {
                 navigate(nextGroupId ? `/groups/${nextGroupId}` : "/");
               }}
             >
-              Batch Spending Splitter
+              Better Expense Splitter
             </button>
 
             <div className="flex items-center gap-2">

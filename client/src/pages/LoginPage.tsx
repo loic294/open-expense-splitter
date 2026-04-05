@@ -10,7 +10,7 @@ export default function LoginPage() {
           <div className="card-body gap-4 p-6 md:p-8">
             <div className="space-y-2">
               <p className="badge badge-soft badge-primary">
-                Batch Spending Splitter
+                Better Expense Splitter
               </p>
               <h1 className="text-3xl font-semibold tracking-tight">
                 Split group spending with dedicated pages instead of one giant

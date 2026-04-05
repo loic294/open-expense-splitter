@@ -1035,6 +1035,12 @@ export default function TransactionSection({
                           <input
                             className="input input-sm w-full min-w-28"
                             value={transaction.name}
+                            onChange={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                name: event.target.value,
+                              }))
+                            }
                             onBlur={(event) =>
                               updateTransaction(transaction.id, (item) => ({
                                 ...item,
@@ -1056,6 +1062,12 @@ export default function TransactionSection({
                               transaction.amount === 0 ? "" : transaction.amount
                             }
                             placeholder="0.00"
+                            onChange={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                amount: Number(event.target.value || 0),
+                              }))
+                            }
                             onBlur={(event) =>
                               updateTransaction(transaction.id, (item) => ({
                                 ...item,
@@ -1133,6 +1145,12 @@ export default function TransactionSection({
                             className="input input-sm w-full min-w-28"
                             type="date"
                             value={transaction.transactionDate}
+                            onChange={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                transactionDate: event.target.value,
+                              }))
+                            }
                             onBlur={(event) =>
                               updateTransaction(transaction.id, (item) => ({
                                 ...item,
@@ -1148,6 +1166,12 @@ export default function TransactionSection({
                             className="input input-sm w-full min-w-20"
                             list={categoryListId}
                             value={transaction.category}
+                            onChange={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                category: event.target.value,
+                              }))
+                            }
                             onBlur={(event) =>
                               updateTransaction(transaction.id, (item) => ({
                                 ...item,
@@ -1163,6 +1187,12 @@ export default function TransactionSection({
                           <input
                             className="input input-sm w-full min-w-28"
                             value={transaction.description}
+                            onChange={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                description: event.target.value,
+                              }))
+                            }
                             onBlur={(event) =>
                               updateTransaction(transaction.id, (item) => ({
                                 ...item,

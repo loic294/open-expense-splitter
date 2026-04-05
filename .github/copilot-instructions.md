@@ -1,4 +1,4 @@
-# Batch Spending Splitter - Project Setup Guide
+# Better Expense Splitter - Project Setup Guide
 
 This is a full-stack Docker project with React + Vite frontend and Node.js + Hono backend, featuring Auth0 authentication and SQLite database persistence.
 
