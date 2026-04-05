@@ -95,6 +95,58 @@ batch-spending-splitter/
      - **Domain**: Your Auth0 domain (e.g., `yourname.auth0.com`)
      - **Client ID**: Your application's client ID
 
+## Deploy with Pre-built Images
+
+The frontend and backend images are published to the GitHub Container Registry. You can run the full stack without cloning the repository using the following `docker-compose.yml`:
+
+```yaml
+services:
+  frontend:
+    image: ghcr.io/loic294/batch-spending-splitter-client:latest
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:3000
+      - VITE_AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - VITE_AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+    depends_on:
+      - backend
+
+  backend:
+    image: ghcr.io/loic294/batch-spending-splitter-server:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+      - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
+    volumes:
+      - db_data:/app/data
+
+volumes:
+  db_data:
+```
+
+Create a `.env` file alongside it and start the stack:
+
+```bash
+# .env
+AUTH0_DOMAIN=your-domain.auth0.com
+AUTH0_CLIENT_ID=your-client-id
+AUTH0_CLIENT_SECRET=your-client-secret
+```
+
+```bash
+docker compose up
+```
+
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:3000
+
+---
+
 ## Getting Started with Docker
 
 1. **Clone the repository and navigate to the project**:
