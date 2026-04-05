@@ -51,6 +51,7 @@ type Bindings = {
   AUTH0_CLIENT_ID: string;
   AUTH0_AUDIENCE?: string;
   APP_BASE_URL?: string;
+  PUBLIC_FRONTEND_URL?: string;
 };
 
 type AuthCtx = { userId: string; email: string; sub: string };
@@ -183,7 +184,12 @@ function isValidEmail(v: string): boolean {
 }
 
 function buildInviteUrl(path: string, env: Bindings): string {
-  const base = (env.APP_BASE_URL || "http://localhost:5173").replace(/\/$/, "");
+  // Try PUBLIC_FRONTEND_URL first (production), then APP_BASE_URL (legacy), then localhost (dev)
+  const base = (
+    env.PUBLIC_FRONTEND_URL ||
+    env.APP_BASE_URL ||
+    "http://localhost:5173"
+  ).replace(/\/$/, "");
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 

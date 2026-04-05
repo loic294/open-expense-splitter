@@ -9,6 +9,7 @@ A full-stack application for tracking and splitting spending across batches. Bui
 - **Database**: SQLite (persistent across Docker runs)
 - **Authentication**: Auth0
 - **Containerization**: Docker & Docker Compose
+- **Optional Deployment**: Cloudflare Workers + Pages
 - **Package Manager**: npm (workspaces)
 
 ## Features
@@ -17,20 +18,21 @@ A full-stack application for tracking and splitting spending across batches. Bui
 - 💾 **Persistent Data**: SQLite database with Docker volume persistence
 - 📊 **Spending Tracking**: Track individual and batch spending
 - 🔒 **Data Privacy**: Users can only view their own data
-- 📱 **Responsive UI**: Modern React interface with Tailwind-inspired styling
+- 📱 **Responsive UI**: Modern React interface with daisyUI components
 - 🚀 **Hot Reload**: Development with instant reload
+- ☁️ **Serverless Ready**: Optional deployment to Cloudflare Workers
 
 ## Frontend Architecture
 
-- Keep `client/src/App.tsx` limited to providers, router setup, and shared layouts.
-- Put page-level behavior in `client/src/pages/`.
-- Put reusable feature logic and UI in `client/src/components/`.
-- Prefer route-based navigation for flows like dashboard, profile, group creation, and group editing instead of toggling sections on one page.
+- Keep `client/src/App.tsx` limited to providers, router setup, and shared layouts
+- Put page-level behavior in `client/src/pages/`
+- Put reusable feature logic and UI in `client/src/components/`
+- Prefer route-based navigation for flows like dashboard, profile, group creation, and group editing
 
 ## Project Structure
 
 ```
-open-expense-splitter/
+batch-spending-splitter/
 ├── client/                 # React + Vite frontend
 │   ├── src/
 │   │   ├── App.tsx
@@ -39,86 +41,187 @@ open-expense-splitter/
 │   │   └── ...
 │   ├── package.json
 │   ├── vite.config.ts
+│   ├── wrangler.toml       # Cloudflare Pages config
 │   ├── Dockerfile
 │   └── .env.example
 ├── server/                 # Node.js + Hono backend
 │   ├── src/
-│   │   ├── index.ts
-│   │   ├── db.ts
-│   │   ├── auth.ts
+│   │   ├── index.ts        # Node.js / Docker entry point
+│   │   ├── worker.ts       # Cloudflare Workers entry point
+│   │   ├── db.ts           # SQLite database setup
+│   │   ├── auth.ts         # Auth0 middleware
 │   │   └── ...
+│   ├── migrations/         # D1 database migrations
 │   ├── package.json
+│   ├── wrangler.toml       # Cloudflare Workers config
 │   ├── Dockerfile
-│   ├── data/              # SQLite database (persistent volume)
+│   ├── data/               # SQLite database (persistent volume)
 │   └── .env.example
-├── docker-compose.yml
-└── package.json           # Root workspace package.json
+├── docker-compose.yml      # Local Docker development
+├── .env.example            # Root environment template
+├── package.json            # Root workspace config
+└── README.md
 ```
 
 ## Prerequisites
 
-### For Docker Deployment
-
-- Docker and Docker Compose
-- Auth0 account (https://auth0.com)
-
-### For Local Development
-
-- Node.js 18+
-- npm
-- Auth0 account
+- Auth0 account (free at https://auth0.com)
+- Docker and Docker Compose (for local Docker development)
+- Node.js 18+ (for local development without Docker)
+- npm or yarn
 
 ## Setting Up Auth0
 
-1. **Create an Auth0 Account**: Go to [auth0.com](https://auth0.com) and sign up for a free account
+1. **Create a Free Auth0 Account** at https://auth0.com
 
 2. **Create a Single Page Application (SPA)**:
-   - Go to Applications > Applications
-   - Click "Create Application"
-   - Select "Single Page Web Application"
-   - Choose React as the technology
+   - Applications → Applications → Create Application
+   - Select "Single Page Web Application" and choose React
 
-3. **Configure the Application**:
-   - Go to Settings
-   - Set **Allowed Callback URLs**: `http://localhost:5173`
-   - Set **Allowed Logout URLs**: `http://localhost:5173`
-   - Set **Allowed Web Origins**: `http://localhost:5173`
+3. **Configure Callback URLs** (Settings tab):
+   - Allowed Callback URLs: `http://localhost:5173`
+   - Allowed Logout URLs: `http://localhost:5173`
+   - Allowed Web Origins: `http://localhost:5173`
 
-4. **Create an API**:
-   - Go to Applications > APIs
-   - Click "Create API"
-   - Name: "Open Expense Splitter API"
-   - Identifier: `https://your-auth0-domain/api/v2/` (or any unique identifier)
+4. **Create an API** (Applications → APIs → Create API):
+   - Name: "Batch Spending Splitter API"
+   - Identifier: `https://your-domain.auth0.com/api` (any unique identifier)
 
-5. **Get Your Credentials**:
-   - From the SPA application settings, copy:
-     - **Domain**: Your Auth0 domain (e.g., `yourname.auth0.com`)
-     - **Client ID**: Your application's client ID
+5. **Get Your Credentials** from the SPA application Settings tab:
+   - Domain: e.g., `yourname.auth0.com`
+   - Client ID: Your application's client ID
 
-## Deploy with Pre-built Images
+## Quick Start with Docker
 
-The frontend and backend images are published to the GitHub Container Registry. You can run the full stack without cloning the repository using the following `docker-compose.yml`:
+### 1. Clone and Setup
+
+```bash
+git clone <repository>
+cd batch-spending-splitter
+```
+
+### 2. Create Environment File
+
+Create a single `.env` file at the project root with your Auth0 credentials:
+
+```bash
+# Required: Auth0 Configuration
+AUTH0_DOMAIN=your-domain.auth0.com
+AUTH0_CLIENT_ID=your-client-id
+AUTH0_CLIENT_SECRET=your-client-secret
+
+# Optional: Auth0 API Audience
+AUTH0_AUDIENCE=https://your-domain.auth0.com/api
+
+# Optional: Public URLs for production deployments
+PUBLIC_FRONTEND_URL=https://app.example.com
+PUBLIC_BACKEND_URL=https://api.example.com
+```
+
+For development, you can omit the `PUBLIC_*` variables:
+
+```bash
+AUTH0_DOMAIN=your-domain.auth0.com
+AUTH0_CLIENT_ID=your-client-id
+AUTH0_CLIENT_SECRET=your-client-secret
+```
+
+### 3. Start Services
+
+```bash
+npm run dev
+```
+
+This starts:
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:3000
+- **Database**: SQLite (persists in Docker volume)
+
+### 4. Stop Services
+
+```bash
+npm run down
+```
+
+Data persists between restarts via Docker volumes.
+
+## Local Development (Without Docker)
+
+### Frontend Setup
+
+```bash
+cd client
+npm install
+cp .env.example .env.local
+```
+
+Edit `client/.env.local`:
+
+```bash
+VITE_API_URL=http://localhost:3000
+VITE_AUTH0_DOMAIN=your-domain.auth0.com
+VITE_AUTH0_CLIENT_ID=your-client-id
+VITE_AUTH0_AUDIENCE=your-api-identifier
+```
+
+Start development server:
+
+```bash
+npm run dev  # Frontend runs on http://localhost:5173
+```
+
+### Backend Setup
+
+```bash
+cd server
+npm install
+cp .env.example .env
+```
+
+Edit `server/.env`:
+
+```bash
+PORT=3000
+NODE_ENV=development
+AUTH0_DOMAIN=your-domain.auth0.com
+AUTH0_CLIENT_ID=your-client-id
+AUTH0_CLIENT_SECRET=your-client-secret
+AUTH0_AUDIENCE=your-api-identifier
+```
+
+Start development server:
+
+```bash
+npm run dev  # Backend runs on http://localhost:3000
+```
+
+## Deploy with Pre-built Docker Images
+
+The frontend and backend publish Docker images automatically to GitHub Container Registry. Use this `docker-compose.yml` to run the latest images:
 
 ```yaml
+version: '3.8'
+
 services:
   frontend:
-    image: ghcr.io/loic294/open-expense-splitter-client:latest
+    image: ghcr.io/loicba/batch-spending-splitter-client:latest
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=http://localhost:3000
+      - VITE_PUBLIC_BACKEND_URL=${PUBLIC_BACKEND_URL:-http://localhost:3000}
       - VITE_AUTH0_DOMAIN=${AUTH0_DOMAIN}
       - VITE_AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
     depends_on:
       - backend
 
   backend:
-    image: ghcr.io/loic294/open-expense-splitter-server:latest
+    image: ghcr.io/loicba/batch-spending-splitter-server:latest
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - PUBLIC_FRONTEND_URL=${PUBLIC_FRONTEND_URL:-http://localhost:5173}
       - AUTH0_DOMAIN=${AUTH0_DOMAIN}
       - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
       - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
@@ -129,111 +232,116 @@ volumes:
   db_data:
 ```
 
-Create a `.env` file alongside it and start the stack:
+Create `.env` with your Auth0 credentials:
 
 ```bash
-# .env
 AUTH0_DOMAIN=your-domain.auth0.com
 AUTH0_CLIENT_ID=your-client-id
 AUTH0_CLIENT_SECRET=your-client-secret
+PUBLIC_BACKEND_URL=https://api.example.com    # optional
+PUBLIC_FRONTEND_URL=https://app.example.com   # optional
 ```
+
+Start the stack:
 
 ```bash
 docker compose up
 ```
 
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:3000
+## Deploy to Cloudflare (Optional)
 
----
+Deploy the backend as a **Cloudflare Worker** (serverless) and frontend as **Cloudflare Pages**.
 
-## Deploy to Cloudflare (optional)
-
-The backend can run as a **Cloudflare Worker** (using Cloudflare D1 for storage) and the frontend as a **Cloudflare Pages** site. The Docker / Node.js setup is not affected.
-
-### One-time setup
+### One-time Setup
 
 ```bash
-# 1. Create the D1 database and copy the database_id into server/wrangler.toml
+# Create D1 database
 cd server
 npx wrangler d1 create batch-spending-splitter
 
-# 2. Apply the schema
-npx wrangler d1 migrations apply batch-spending-splitter --local   # local dev
-npx wrangler d1 migrations apply batch-spending-splitter --remote  # production
+# Copy the database_id into server/wrangler.toml
 
-# 3. Create the Cloudflare Pages project (only required once)
+# Apply schema to local and production
+npx wrangler d1 migrations apply batch-spending-splitter --local
+npx wrangler d1 migrations apply batch-spending-splitter --remote
+
+# Create Pages project
 npx wrangler pages project create batch-spending-splitter
 ```
 
-Update `server/wrangler.toml` with the `database_id` from step 1 and set the correct `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, and `APP_BASE_URL` values.
-
-### Local development against D1
+### Local Development
 
 ```bash
 cd server
-npm run worker:dev   # starts wrangler dev with local D1 on http://localhost:8787
+npm run worker:dev  # Runs on http://localhost:8787 with local D1
 ```
 
-### Manual deploy
+### Manual Deploy
 
 ```bash
-cd server && npm run worker:deploy                         # deploy the Worker
+# Deploy Worker
+cd server && npm run worker:deploy
+
+# Build and deploy frontend
 cd client && npm run build && npx wrangler pages deploy dist --project-name=batch-spending-splitter
 ```
 
-### Automated deploy (GitHub Actions)
+### Automated Deploy (GitHub Actions)
 
-The [deploy-cloudflare workflow](.github/workflows/deploy-cloudflare.yml) runs on every push to `main` and:
+Create GitHub repository secrets (Settings → Secrets and variables → Actions):
 
-1. Applies any pending D1 migrations
-2. Deploys the Worker
-3. Builds the frontend and deploys it to Cloudflare Pages
+| Secret                  | Value                           |
+| ----------------------- | ------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | Your Cloudflare API token       |
+| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID      |
 
-**Required repository secrets** (Settings → Secrets → Actions):
+Create GitHub repository variables (Settings → Secrets and variables → Variables):
 
-| Secret                  | Description                                                  |
-| ----------------------- | ------------------------------------------------------------ |
-| `CLOUDFLARE_API_TOKEN`  | Cloudflare API token with Workers, D1, and Pages permissions |
-| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID                                   |
+| Variable          | Value                                            |
+| ----------------- | ------------------------------------------------ |
+| `AUTH0_DOMAIN`    | your-domain.auth0.com                          |
+| `AUTH0_CLIENT_ID` | Your Auth0 SPA client ID                        |
+| `CF_WORKER_URL`   | https://worker-url.workers.dev                  |
 
-**Required repository variables** (Settings → Variables → Actions):
+The deployment workflow runs automatically on every push to `main`.
 
-| Variable          | Description                                                                             |
-| ----------------- | --------------------------------------------------------------------------------------- |
-| `AUTH0_DOMAIN`    | e.g. `yourapp.auth0.com`                                                                |
-| `AUTH0_CLIENT_ID` | Auth0 SPA client ID                                                                     |
-| `CF_WORKER_URL`   | Deployed Worker URL, e.g. `https://batch-spending-splitter-api.<subdomain>.workers.dev` |
+## Environment Variables Reference
 
----
+### How It Works
 
-## Getting Started with Docker
+**Docker Compose** reads variables from a single root `.env` file and passes them to containers. Variables are automatically prefixed with `VITE_` for the frontend to access them via `import.meta.env`.
 
-1. **Clone the repository and navigate to the project**:
+**Local Development** uses separate `.env.local` (frontend) and `.env` (backend) files for flexibility.
 
-```bash
-cd open-expense-splitter
-```
+### Variable Definitions
 
-2. **Create environment files**:
-
-**`.env` file at the root** (for docker-compose):
+#### Root `.env` (Docker Compose - Single Source of Truth)
 
 ```bash
+# ====== Auth0 Configuration (Required) ======
 AUTH0_DOMAIN=your-domain.auth0.com
 AUTH0_CLIENT_ID=your-client-id
 AUTH0_CLIENT_SECRET=your-client-secret
+
+# ====== Optional: Auth0 API Audience ======
+AUTH0_AUDIENCE=https://your-domain.auth0.com/api
+
+# ====== Optional: Public URLs (Production) ======
+# If set, these override internal localhost URLs for production deployments
+PUBLIC_BACKEND_URL=https://api.example.com
+PUBLIC_FRONTEND_URL=https://app.example.com
 ```
 
-**`client/.env.local`**:
+#### `client/.env.local` (Frontend Local Dev Only)
 
 ```bash
 VITE_API_URL=http://localhost:3000
 VITE_AUTH0_DOMAIN=your-domain.auth0.com
 VITE_AUTH0_CLIENT_ID=your-client-id
+VITE_AUTH0_AUDIENCE=your-api-identifier
 ```
 
-**`server/.env`**:
+#### `server/.env` (Backend Local Dev Only)
 
 ```bash
 PORT=3000
@@ -241,181 +349,153 @@ NODE_ENV=development
 AUTH0_DOMAIN=your-domain.auth0.com
 AUTH0_CLIENT_ID=your-client-id
 AUTH0_CLIENT_SECRET=your-client-secret
+AUTH0_AUDIENCE=your-api-identifier
+PUBLIC_FRONTEND_URL=https://app.example.com  # optional for production URLs
 ```
 
-3. **Start the services**:
+### Variable Resolution Order
 
-```bash
-npm run dev
-```
+**Frontend API URL** (client/src/api.ts):
+1. `VITE_PUBLIC_BACKEND_URL` (production)
+2. `VITE_API_URL` (legacy fallback)
+3. `http://localhost:3000` (development default)
 
-This will start:
+**Backend CORS Origin** (server/src/index.ts):
+1. `PUBLIC_FRONTEND_URL` (production)
+2. `http://localhost:5173` (development default)
 
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:3000
+### All Available Variables
 
-4. **Stop the services**:
-
-```bash
-npm run down
-```
-
-## Local Development (without Docker)
-
-### Frontend Setup
-
-```bash
-cd client
-npm install
-cp .env.example .env.local
-# Edit .env.local with your Auth0 credentials
-npm run dev
-```
-
-The frontend will be available at http://localhost:5173
-
-### Backend Setup
-
-```bash
-cd server
-npm install
-cp .env.example .env
-# Edit .env with your Auth0 credentials
-npm run dev
-```
-
-The backend will be available at http://localhost:3000
+| Variable | Used By | Purpose | Required |
+|----------|---------|---------|----------|
+| `AUTH0_DOMAIN` | Backend, Frontend | Auth0 tenant domain | ✅ |
+| `AUTH0_CLIENT_ID` | Backend, Frontend | Auth0 application ID | ✅ |
+| `AUTH0_CLIENT_SECRET` | Backend only | Auth0 application secret | ✅ (backend) |
+| `AUTH0_AUDIENCE` | Backend, Frontend | Auth0 API audience identifier | ❌ |
+| `PUBLIC_BACKEND_URL` | Frontend | Public API URL for production | ❌ |
+| `PUBLIC_FRONTEND_URL` | Backend | Public frontend URL for production | ❌ |
+| `PORT` | Backend only | Server port (Node.js) | ❌ (default: 3000) |
+| `NODE_ENV` | Backend only | Environment mode | ❌ (default: development) |
 
 ## API Endpoints
 
-### Public Endpoints
+### Public
 
 - `GET /` - API information
 - `GET /api/health` - Health check
 
-### Authenticated Endpoints
+### Authenticated (require Auth0 JWT)
 
 - `POST /api/auth/login` - Create/update user on login
-- `GET /api/me` - Get current authenticated user profile
-- `GET /api/spendings` - Get user's spending records (only their own)
-- `POST /api/spendings` - Create a spending record
-- `GET /api/groups` - Get user's groups (owner or member)
-- `POST /api/groups` - Create a group
+- `GET /api/me` - Get current user profile
+- `GET /api/spendings` - Get user's spendings
+- `POST /api/spendings` - Create spending record
+- `GET /api/groups` - Get user's groups
+- `POST /api/groups` - Create group
+- `POST /api/spendings/import` - Import spendings from CSV
+- `GET /api/invites/:code` - Get invite details
+- `POST /api/invites/:code/accept` - Accept group invite
 
 ## Database Schema
 
-The SQLite database includes:
+**users**
+- `id, auth0_id, email, name, picture, created_at, updated_at`
 
-- **users**: User profiles synced from Auth0
-  - `id`, `auth0_id`, `email`, `name`, `picture`, `created_at`, `updated_at`
+**spendings**
+- `id, user_id, description, amount, category, date, created_at`
 
-- **spendings**: Individual spending records
-  - `id`, `user_id`, `description`, `amount`, `category`, `date`, `created_at`
+**batches**
+- `id, owner_id, name, description, created_at, updated_at`
 
-- **batches**: Batch groups for splitting
-  - `id`, `owner_id`, `name`, `description`, `created_at`, `updated_at`
+**batch_members**
+- `id, batch_id, user_id, created_at`
 
-- **batch_members**: Participants in each batch
-  - `id`, `batch_id`, `user_id`, `created_at`
+**batch_items**
+- `id, batch_id, spending_id, paid_by_id, amount, description, created_at`
 
-- **batch_items**: Individual items in batches
-  - `id`, `batch_id`, `spending_id`, `paid_by_id`, `amount`, `description`, `created_at`
+**currency_preferences**
+- `id, user_id, currency, created_at, updated_at`
+
+**invites**
+- `id, batch_id, code, created_at, expires_at`
 
 ## Data Persistence
 
-The SQLite database is stored in a Docker volume (`db_data`) that persists between container runs. This means:
+### Docker
 
-- Your data will survive container restarts
-- The database file is located at `/app/data/app.db` inside the container
-- Use `npm run down` to stop services without losing data
-- Use `docker volume rm open-expense-splitter_db_data` to delete all data (⚠️ destructive)
+SQLite database stored in Docker volume (`db_data`):
+- **Persists**: Container restarts and `npm run down`
+- **Deleted**: `docker volume rm batch-spending-splitter_db_data` ⚠️
 
-## Environment Variables Reference
+### Cloudflare
 
-### Frontend (client/.env.local)
-
-```
-VITE_API_URL=http://localhost:3000          # Backend API URL
-VITE_AUTH0_DOMAIN=your-domain.auth0.com     # Auth0 domain
-VITE_AUTH0_CLIENT_ID=your-client-id         # Auth0 application client ID
-```
-
-### Backend (server/.env)
-
-```
-PORT=3000                          # Server port
-NODE_ENV=development               # Environment (development/production)
-AUTH0_DOMAIN=your-domain.auth0.com # Auth0 domain
-AUTH0_CLIENT_ID=your-client-id     # Auth0 application client ID
-AUTH0_CLIENT_SECRET=your-secret    # Auth0 application client secret
-```
+Uses D1 database (serverless SQLite):
+- **Persists**: Automatically in Cloudflare
+- **Schema**: Managed via migrations in `server/migrations/`
 
 ## Available Scripts
 
 ### Root Level
 
-- `npm run dev` - Start all services with Docker Compose
+- `npm run dev` - Start Docker services
 - `npm run build` - Build Docker images
-- `npm run down` - Stop Docker containers
+- `npm run down` - Stop Docker services
 
-### Client (React + Vite)
+### Frontend (`client/`)
 
 - `npm run dev` - Start Vite dev server
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
 
-### Server (Node.js + Hono)
+### Backend (`server/`)
 
-- `npm run dev` - Start Hono server with watch mode (tsx)
+- `npm run dev` - Start Node.js dev server with hot reload
 - `npm run build` - Compile TypeScript
 - `npm start` - Run compiled server
+- `npm run worker:dev` - Start Cloudflare Workers local dev
+- `npm run worker:deploy` - Deploy to Cloudflare Workers
 
 ## Troubleshooting
 
-### Auth0 Login Not Working
+### Auth0 Login Fails
 
-- Verify your Auth0 domain, client ID, and credentials are correct
-- Check that callback URLs are properly configured in Auth0
-- Ensure environment variables are set correctly in `.env.local` (frontend) and `.env` (backend)
+- Verify `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID` are correct
+- Check Auth0 Callback URLs include `http://localhost:5173`
+- Ensure `.env` variables are set
 
 ### Port Already in Use
 
-- Stop existing containers: `npm run down`
-- Or modify port mappings in `docker-compose.yml`
+```bash
+npm run down
+# or modify ports in docker-compose.yml
+```
 
 ### Database Issues
 
-- Check that the `data` directory exists in the server container
-- Verify the volume is properly mounted: `docker volume ls`
-- Reset database: `docker volume rm open-expense-splitter_db_data`
+```bash
+# Check volume
+docker volume ls
+
+# Reset database
+docker volume rm batch-spending-splitter_db_data
+
+# Rebuild
+npm run dev
+```
 
 ### Module Not Found
 
 ```bash
 cd client && npm install
 cd server && npm install
-```
-
-### Docker Build Issues
-
-```bash
-docker compose build --no-cache
 npm run dev
 ```
 
-## User Data Privacy
-
-- **User Isolation**: Users can only view their own spending data
-- **Authentication**: All protected endpoints require valid Auth0 tokens
-- **Database Constraints**: Foreign key constraints ensure data integrity
-- **User Verification**: Backend middleware validates token ownership
-
 ## Contributing
 
-1. Create a feature branch
-2. Make your changes
-3. Test locally with both services running
-4. Submit a pull request
+1. Fork and create a feature branch
+2. Make changes and test locally
+3. Submit a pull request
 
 ## License
 
@@ -423,9 +503,10 @@ MIT
 
 ## Resources
 
-- [React Documentation](https://react.dev)
-- [Vite Documentation](https://vitejs.dev)
-- [Hono Documentation](https://hono.dev)
-- [Auth0 Documentation](https://auth0.com/docs)
-- [SQLite Documentation](https://www.sqlite.org/docs.html)
-- [Docker Documentation](https://docs.docker.com)
+- [React Docs](https://react.dev)
+- [Vite Docs](https://vitejs.dev)
+- [Hono Docs](https://hono.dev)
+- [Auth0 Docs](https://auth0.com/docs)
+- [SQLite Docs](https://www.sqlite.org)
+- [Docker Docs](https://docs.docker.com)
+- [Cloudflare Docs](https://developers.cloudflare.com)

@@ -60,10 +60,29 @@ function isValidEmail(value: string): boolean {
 
 function getFrontendBaseUrl() {
   return (
+    process.env.PUBLIC_FRONTEND_URL ||
     process.env.APP_BASE_URL ||
     process.env.FRONTEND_URL ||
     "http://localhost:5173"
   );
+}
+
+/**
+ * Build the list of allowed CORS origins.
+ * Includes localhost for development and the public frontend URL for production.
+ */
+function getAllowedCorsOrigins(): string[] {
+  const origins = new Set<string>([
+    "http://localhost:5173",
+    "http://localhost:3000",
+  ]);
+
+  const publicUrl = process.env.PUBLIC_FRONTEND_URL;
+  if (publicUrl) {
+    origins.add(publicUrl.replace(/\/$/, ""));
+  }
+
+  return Array.from(origins);
 }
 
 function buildInviteUrl(path: string) {
@@ -729,11 +748,12 @@ app.use("*", async (c, next) => {
   );
 });
 
-// Enable CORS for frontend
+// Enable CORS for frontend – includes localhost for development and
+// PUBLIC_FRONTEND_URL (if set) for production.
 app.use(
   "*",
   cors({
-    origin: ["http://localhost:5173", "http://localhost:3000"],
+    origin: getAllowedCorsOrigins(),
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization", "X-Request-ID"],
     credentials: true,

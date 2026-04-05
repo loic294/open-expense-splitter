@@ -5,10 +5,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5173:5173"
+    env_file: .env
     environment:
-      - VITE_API_URL=http://localhost:3000
+      # Map root .env variables to VITE_* for the frontend
+      - VITE_PUBLIC_BACKEND_URL=${PUBLIC_BACKEND_URL:-http://localhost:3000}
       - VITE_AUTH0_DOMAIN=${AUTH0_DOMAIN}
       - VITE_AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+      - VITE_AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
       - TAILWIND_DISABLE_OXIDE=1
     volumes:
       - ./client/src:/app/src
@@ -22,12 +25,11 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
+    env_file: .env
     environment:
       - NODE_ENV=development
       - PORT=3000
-      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
-      - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
-      - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
+      # PUBLIC_FRONTEND_URL, AUTH0_* loaded from .env via env_file
     volumes:
       - ./server/src:/app/src
       - db_data:/app/data
