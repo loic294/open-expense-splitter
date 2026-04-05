@@ -8,6 +8,7 @@ import type {
   SplitData,
   SplitType,
   Transaction,
+  TransactionColumnType,
 } from "../types";
 import {
   createDefaultSplitData,
@@ -57,6 +58,20 @@ function summarizeTransaction(transaction: Transaction) {
     splitMembers: transaction.splitData.includedMemberIds,
     splitValueCount: Object.keys(transaction.splitData.values).length,
   };
+}
+
+function getVisibleColumns(group?: Group): TransactionColumnType[] {
+  const defaults: TransactionColumnType[] = [
+    "name",
+    "amount",
+    "currency",
+    "split",
+    "paid_by",
+    "date",
+    "category",
+    "description",
+  ];
+  return group?.visibleColumns || defaults;
 }
 
 function AdvancedSplitModal({
@@ -344,6 +359,17 @@ export default function TransactionSection({
     transactionId: string;
     transactionName: string;
   } | null>(null);
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+  const [bulkUpdateField, setBulkUpdateField] = useState<
+    | "category"
+    | "paidById"
+    | "currency"
+    | "splitType"
+    | "date"
+    | "description"
+    | null
+  >(null);
+  const [bulkUpdateValue, setBulkUpdateValue] = useState<string>("");
 
   useEffect(() => {
     onTransactionsChange?.(transactions);
@@ -777,6 +803,162 @@ export default function TransactionSection({
       <section className="card card-border bg-base-100 rounded-md w-full shadow-sm">
         <div className="card-body p-3 md:p-4 gap-3">
           <h2 className="card-title text-base">Transactions</h2>
+          {selectedRowIds.size > 0 && (
+            <div className="alert alert-info alert-soft gap-3">
+              <div className="flex-1">
+                <span className="font-semibold">
+                  {selectedRowIds.size} row
+                  {selectedRowIds.size !== 1 ? "s" : ""} selected
+                </span>
+              </div>
+              <div className="flex flex-col md:flex-row gap-2 items-end">
+                <div className="flex gap-2 w-full md:w-auto">
+                  <select
+                    className="select select-sm flex-1"
+                    value={bulkUpdateField || ""}
+                    onChange={(event) =>
+                      setBulkUpdateField(
+                        (event.target.value as
+                          | "category"
+                          | "paidById"
+                          | "currency"
+                          | "splitType"
+                          | "date"
+                          | "description") || null,
+                      )
+                    }
+                  >
+                    <option value="">Select field to update...</option>
+                    <option value="category">Category</option>
+                    <option value="paidById">Paid by</option>
+                    <option value="currency">Currency</option>
+                    <option value="splitType">Split type</option>
+                    <option value="date">Date</option>
+                    <option value="description">Description</option>
+                  </select>
+                </div>
+                {bulkUpdateField === "category" && (
+                  <input
+                    type="text"
+                    className="input input-sm flex-1"
+                    placeholder="New category"
+                    value={bulkUpdateValue}
+                    onChange={(event) => setBulkUpdateValue(event.target.value)}
+                  />
+                )}
+                {bulkUpdateField === "paidById" && (
+                  <select
+                    className="select select-sm flex-1"
+                    value={bulkUpdateValue}
+                    onChange={(event) => setBulkUpdateValue(event.target.value)}
+                  >
+                    <option value="">Select who paid...</option>
+                    {group.members.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {memberName(member)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {bulkUpdateField === "currency" && (
+                  <select
+                    className="select select-sm flex-1"
+                    value={bulkUpdateValue}
+                    onChange={(event) => setBulkUpdateValue(event.target.value)}
+                  >
+                    <option value="">Select currency...</option>
+                    {SUPPORTED_CURRENCIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {bulkUpdateField === "splitType" && (
+                  <select
+                    className="select select-sm flex-1"
+                    value={bulkUpdateValue}
+                    onChange={(event) => setBulkUpdateValue(event.target.value)}
+                  >
+                    <option value="">Select split type...</option>
+                    <option value="equal">Equal split</option>
+                    <option value="amount">Exact amounts</option>
+                    <option value="percent">Exact percentages</option>
+                  </select>
+                )}
+                {bulkUpdateField === "date" && (
+                  <input
+                    type="date"
+                    className="input input-sm flex-1"
+                    value={bulkUpdateValue}
+                    onChange={(event) => setBulkUpdateValue(event.target.value)}
+                  />
+                )}
+                {bulkUpdateField === "description" && (
+                  <input
+                    type="text"
+                    className="input input-sm flex-1"
+                    placeholder="New description"
+                    value={bulkUpdateValue}
+                    onChange={(event) => setBulkUpdateValue(event.target.value)}
+                  />
+                )}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  disabled={!bulkUpdateField || !bulkUpdateValue}
+                  onClick={() => {
+                    if (!bulkUpdateField || !bulkUpdateValue) return;
+                    selectedRowIds.forEach((transactionId) => {
+                      if (bulkUpdateField === "category") {
+                        updateTransaction(transactionId, (item) => ({
+                          ...item,
+                          category: bulkUpdateValue,
+                        }));
+                      } else if (bulkUpdateField === "paidById") {
+                        updateTransaction(transactionId, (item) => ({
+                          ...item,
+                          paidById: bulkUpdateValue,
+                        }));
+                      } else if (bulkUpdateField === "currency") {
+                        updateTransaction(transactionId, (item) => ({
+                          ...item,
+                          currency: normalizeCurrency(bulkUpdateValue),
+                        }));
+                      } else if (bulkUpdateField === "splitType") {
+                        updateTransaction(transactionId, (item) => ({
+                          ...item,
+                          splitType: bulkUpdateValue as SplitType,
+                        }));
+                      } else if (bulkUpdateField === "date") {
+                        updateTransaction(transactionId, (item) => ({
+                          ...item,
+                          transactionDate: bulkUpdateValue,
+                        }));
+                      } else if (bulkUpdateField === "description") {
+                        updateTransaction(transactionId, (item) => ({
+                          ...item,
+                          description: bulkUpdateValue,
+                        }));
+                      }
+                    });
+                    setSelectedRowIds(new Set());
+                    setBulkUpdateField(null);
+                    setBulkUpdateValue("");
+                  }}
+                >
+                  Apply
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => setSelectedRowIds(new Set())}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
           {loadingData ? (
             <div className="flex justify-center py-4">
               <span className="loading loading-spinner loading-md" />
@@ -786,14 +968,45 @@ export default function TransactionSection({
               <table className="table table-zebra [&_td]:px-2 [&_td]:py-2 [&_th]:px-2 [&_th]:py-2 w-full [&_td]:align-middle">
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Amount</th>
-                    <th>Currency</th>
-                    <th>Split</th>
-                    <th>Paid by</th>
-                    <th>Date</th>
-                    <th>Category</th>
-                    <th>Description</th>
+                    <th className="w-10">
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm"
+                        checked={
+                          selectedRowIds.size > 0 &&
+                          selectedRowIds.size === transactions.length
+                        }
+                        onChange={(event) => {
+                          if (event.target.checked) {
+                            setSelectedRowIds(
+                              new Set(transactions.map((t) => t.id)),
+                            );
+                          } else {
+                            setSelectedRowIds(new Set());
+                          }
+                        }}
+                      />
+                    </th>
+                    {getVisibleColumns(group).includes("name") && <th>Name</th>}
+                    {getVisibleColumns(group).includes("amount") && (
+                      <th>Amount</th>
+                    )}
+                    {getVisibleColumns(group).includes("currency") && (
+                      <th>Currency</th>
+                    )}
+                    {getVisibleColumns(group).includes("split") && (
+                      <th>Split</th>
+                    )}
+                    {getVisibleColumns(group).includes("paid_by") && (
+                      <th>Paid by</th>
+                    )}
+                    {getVisibleColumns(group).includes("date") && <th>Date</th>}
+                    {getVisibleColumns(group).includes("category") && (
+                      <th>Category</th>
+                    )}
+                    {getVisibleColumns(group).includes("description") && (
+                      <th>Description</th>
+                    )}
                     <th>Status</th>
                     <th></th>
                   </tr>
@@ -801,133 +1014,165 @@ export default function TransactionSection({
                 <tbody>
                   {transactions.map((transaction) => (
                     <tr key={transaction.id}>
-                      <td>
+                      <td className="w-10">
                         <input
-                          className="input input-sm w-full min-w-28"
-                          value={transaction.name}
-                          onChange={(event) =>
-                            updateTransaction(transaction.id, (item) => ({
-                              ...item,
-                              name: event.target.value,
-                            }))
-                          }
-                          placeholder="Dinner"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="input input-sm w-full min-w-20"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={
-                            transaction.amount === 0 ? "" : transaction.amount
-                          }
-                          placeholder="0.00"
-                          onChange={(event) =>
-                            updateTransaction(transaction.id, (item) => ({
-                              ...item,
-                              amount: Number(event.target.value || 0),
-                            }))
-                          }
-                        />
-                      </td>
-                      <td>
-                        <select
-                          className="select select-sm w-full min-w-16"
-                          value={transaction.currency}
-                          onChange={(event) =>
-                            updateTransaction(transaction.id, (item) => ({
-                              ...item,
-                              currency: normalizeCurrency(event.target.value),
-                            }))
-                          }
-                        >
-                          {SUPPORTED_CURRENCIES.map((c) => (
-                            <option key={c} value={c}>
-                              {c}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => {
-                            setActiveSplitTransactionId(transaction.id);
-                            setSplitEditor({
-                              splitType: transaction.splitType,
-                              splitData: {
-                                includedMemberIds: [
-                                  ...transaction.splitData.includedMemberIds,
-                                ],
-                                values: { ...transaction.splitData.values },
-                              },
-                            });
+                          type="checkbox"
+                          className="checkbox checkbox-sm"
+                          checked={selectedRowIds.has(transaction.id)}
+                          onChange={(event) => {
+                            const next = new Set(selectedRowIds);
+                            if (event.target.checked) {
+                              next.add(transaction.id);
+                            } else {
+                              next.delete(transaction.id);
+                            }
+                            setSelectedRowIds(next);
                           }}
-                        >
-                          {splitLabel(transaction, group.members)}
-                        </button>
-                      </td>
-                      <td>
-                        <select
-                          className="select select-sm w-full min-w-24"
-                          value={transaction.paidById}
-                          onChange={(event) =>
-                            updateTransaction(transaction.id, (item) => ({
-                              ...item,
-                              paidById: event.target.value,
-                            }))
-                          }
-                        >
-                          {group.members.map((member) => (
-                            <option key={member.id} value={member.id}>
-                              {memberName(member)}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          className="input input-sm w-full min-w-28"
-                          type="date"
-                          value={transaction.transactionDate}
-                          onChange={(event) =>
-                            updateTransaction(transaction.id, (item) => ({
-                              ...item,
-                              transactionDate: event.target.value,
-                            }))
-                          }
                         />
                       </td>
-                      <td>
-                        <input
-                          className="input input-sm w-full min-w-20"
-                          list={categoryListId}
-                          value={transaction.category}
-                          onChange={(event) =>
-                            updateTransaction(transaction.id, (item) => ({
-                              ...item,
-                              category: event.target.value,
-                            }))
-                          }
-                          placeholder="Food"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="input input-sm w-full min-w-28"
-                          value={transaction.description}
-                          onChange={(event) =>
-                            updateTransaction(transaction.id, (item) => ({
-                              ...item,
-                              description: event.target.value,
-                            }))
-                          }
-                          placeholder="Optional"
-                        />
-                      </td>
+                      {getVisibleColumns(group).includes("name") && (
+                        <td>
+                          <input
+                            className="input input-sm w-full min-w-28"
+                            value={transaction.name}
+                            onBlur={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                name: event.target.value,
+                              }))
+                            }
+                            placeholder="Dinner"
+                          />
+                        </td>
+                      )}
+                      {getVisibleColumns(group).includes("amount") && (
+                        <td>
+                          <input
+                            className="input input-sm w-full min-w-20"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={
+                              transaction.amount === 0 ? "" : transaction.amount
+                            }
+                            placeholder="0.00"
+                            onBlur={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                amount: Number(event.target.value || 0),
+                              }))
+                            }
+                          />
+                        </td>
+                      )}
+                      {getVisibleColumns(group).includes("currency") && (
+                        <td>
+                          <select
+                            className="select select-sm w-full min-w-16"
+                            value={transaction.currency}
+                            onChange={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                currency: normalizeCurrency(event.target.value),
+                              }))
+                            }
+                          >
+                            {SUPPORTED_CURRENCIES.map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      )}
+                      {getVisibleColumns(group).includes("split") && (
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            onClick={() => {
+                              setActiveSplitTransactionId(transaction.id);
+                              setSplitEditor({
+                                splitType: transaction.splitType,
+                                splitData: {
+                                  includedMemberIds: [
+                                    ...transaction.splitData.includedMemberIds,
+                                  ],
+                                  values: { ...transaction.splitData.values },
+                                },
+                              });
+                            }}
+                          >
+                            {splitLabel(transaction, group.members)}
+                          </button>
+                        </td>
+                      )}
+                      {getVisibleColumns(group).includes("paid_by") && (
+                        <td>
+                          <select
+                            className="select select-sm w-full min-w-24"
+                            value={transaction.paidById}
+                            onChange={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                paidById: event.target.value,
+                              }))
+                            }
+                          >
+                            {group.members.map((member) => (
+                              <option key={member.id} value={member.id}>
+                                {memberName(member)}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      )}
+                      {getVisibleColumns(group).includes("date") && (
+                        <td>
+                          <input
+                            className="input input-sm w-full min-w-28"
+                            type="date"
+                            value={transaction.transactionDate}
+                            onBlur={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                transactionDate: event.target.value,
+                              }))
+                            }
+                          />
+                        </td>
+                      )}
+                      {getVisibleColumns(group).includes("category") && (
+                        <td>
+                          <input
+                            className="input input-sm w-full min-w-20"
+                            list={categoryListId}
+                            value={transaction.category}
+                            onBlur={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                category: event.target.value,
+                              }))
+                            }
+                            placeholder="Food"
+                          />
+                        </td>
+                      )}
+                      {getVisibleColumns(group).includes("description") && (
+                        <td>
+                          <input
+                            className="input input-sm w-full min-w-28"
+                            value={transaction.description}
+                            onBlur={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                description: event.target.value,
+                              }))
+                            }
+                            placeholder="Optional"
+                          />
+                        </td>
+                      )}
                       <td className="text-xs text-base-content/60 whitespace-nowrap">
                         {savingTransactions[transaction.id]
                           ? "Saving…"

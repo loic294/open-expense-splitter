@@ -71,7 +71,7 @@ export default function GroupSummaryCard({
       try {
         setLoadingCurrencyPreference(true);
         const response = await apiCall(
-          `/api/batches/${group.id}/currency-preference`,
+          `/api/groups/${group.id}/currency-preference`,
         );
         if (cancelled) return;
         setDisplayCurrency(normalizeCurrency(response.currency));

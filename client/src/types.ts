@@ -1,5 +1,16 @@
 export type SplitType = "equal" | "amount" | "percent";
 
+export type TransactionColumnType =
+  | "name"
+  | "amount"
+  | "currency"
+  | "paid_by"
+  | "date"
+  | "category"
+  | "split"
+  | "description"
+  | "status";
+
 export interface ProfileForm {
   name: string;
   email: string;
@@ -21,6 +32,7 @@ export interface Group {
   owner_id: string;
   members: GroupMember[];
   canEdit: boolean;
+  visibleColumns?: TransactionColumnType[];
 }
 
 export interface GroupForm {

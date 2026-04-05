@@ -474,7 +474,7 @@ app.get("/", (c) => {
     endpoints: {
       health: "/api/health",
       spendings: "/api/spendings",
-      batches: "/api/batches",
+      groups: "/api/groups",
     },
   });
 });
@@ -1229,7 +1229,7 @@ app.delete("/api/spendings/:id", async (c) => {
   }
 });
 
-app.get("/api/batches/:id/currency-preference", (c) => {
+app.get("/api/groups/:id/currency-preference", (c) => {
   try {
     const auth = requireAuth(c);
     const userId = getUserIdFromSub(auth.sub);
@@ -1258,7 +1258,7 @@ app.get("/api/batches/:id/currency-preference", (c) => {
     });
   } catch (error) {
     console.error(
-      "[api:/api/batches/:id/currency-preference GET] failed:",
+      "[api:/api/groups/:id/currency-preference GET] failed:",
       error,
     );
     return c.json(
@@ -1272,7 +1272,7 @@ app.get("/api/batches/:id/currency-preference", (c) => {
   }
 });
 
-app.put("/api/batches/:id/currency-preference", async (c) => {
+app.put("/api/groups/:id/currency-preference", async (c) => {
   try {
     const auth = requireAuth(c);
     const userId = getUserIdFromSub(auth.sub);
@@ -1302,7 +1302,7 @@ app.put("/api/batches/:id/currency-preference", async (c) => {
     });
   } catch (error) {
     console.error(
-      "[api:/api/batches/:id/currency-preference PUT] failed:",
+      "[api:/api/groups/:id/currency-preference PUT] failed:",
       error,
     );
     return c.json(
@@ -1363,8 +1363,8 @@ app.post("/api/exchange-rates/resolve", async (c) => {
   }
 });
 
-// Get user's batches (only their own or where they're members)
-app.get("/api/batches", (c) => {
+// Get user's groups (only their own or where they're members)
+app.get("/api/groups", (c) => {
   try {
     const auth = requireAuth(c);
 
@@ -1390,7 +1390,7 @@ app.get("/api/batches", (c) => {
 
     return c.json({ batches: hydratedBatches, total: hydratedBatches.length });
   } catch (error) {
-    console.error("[api:/api/batches GET] failed:", error);
+    console.error("[api:/api/groups GET] failed:", error);
     return c.json(
       {
         error: isUnauthorizedError(error)
@@ -1402,8 +1402,8 @@ app.get("/api/batches", (c) => {
   }
 });
 
-// Create batch
-app.post("/api/batches", async (c) => {
+// Create group
+app.post("/api/groups", async (c) => {
   try {
     const auth = requireAuth(c);
     const body = (await c.req.json()) as {
@@ -1452,7 +1452,7 @@ app.post("/api/batches", async (c) => {
       201,
     );
   } catch (error) {
-    console.error("[api:/api/batches POST] failed:", error);
+    console.error("[api:/api/groups POST] failed:", error);
     return c.json(
       {
         error: isUnauthorizedError(error)
@@ -1464,7 +1464,7 @@ app.post("/api/batches", async (c) => {
   }
 });
 
-app.patch("/api/batches/:id", async (c) => {
+app.patch("/api/groups/:id", async (c) => {
   try {
     const auth = requireAuth(c);
     const body = (await c.req.json()) as {
@@ -1524,7 +1524,100 @@ app.patch("/api/batches/:id", async (c) => {
       canEdit: true,
     });
   } catch (error) {
-    console.error("[api:/api/batches PATCH] failed:", error);
+    console.error("[api:/api/groups PATCH] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+// Get group column visibility
+app.get("/api/groups/:id/column-visibility", (c) => {
+  try {
+    const auth = requireAuth(c);
+    const groupId = c.req.param("id");
+    const userId = getUserIdFromSub(auth.sub);
+
+    // Verify user is owner or member
+    const isMember = db
+      .prepare("SELECT 1 FROM batch_members WHERE batch_id = ? AND user_id = ?")
+      .get(groupId, userId);
+    const isOwner = db
+      .prepare("SELECT 1 FROM batches WHERE id = ? AND owner_id = ?")
+      .get(groupId, userId);
+
+    if (!isMember && !isOwner) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const row = db
+      .prepare(
+        "SELECT visible_columns FROM group_column_visibility WHERE group_id = ? AND user_id = ?",
+      )
+      .get(groupId, userId) as any;
+
+    const visibleColumns = row
+      ? row.visible_columns.split(",")
+      : "name,amount,currency,paid_by,date,category,split,description".split(
+          ",",
+        );
+
+    return c.json({ visibleColumns });
+  } catch (error) {
+    console.error("[api:/api/groups/:id/column-visibility GET] failed:", error);
+    return c.json(
+      {
+        error: isUnauthorizedError(error)
+          ? "Unauthorized"
+          : "Internal Server Error",
+      },
+      isUnauthorizedError(error) ? 401 : 500,
+    );
+  }
+});
+
+// Set group column visibility
+app.put("/api/groups/:id/column-visibility", async (c) => {
+  try {
+    const auth = requireAuth(c);
+    const groupId = c.req.param("id");
+    const userId = getUserIdFromSub(auth.sub);
+    const body = (await c.req.json()) as { visibleColumns?: string[] };
+
+    // Verify user is owner or member
+    const isMember = db
+      .prepare("SELECT 1 FROM batch_members WHERE batch_id = ? AND user_id = ?")
+      .get(groupId, userId);
+    const isOwner = db
+      .prepare("SELECT 1 FROM batches WHERE id = ? AND owner_id = ?")
+      .get(groupId, userId);
+
+    if (!isMember && !isOwner) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const visibleColumns = Array.isArray(body.visibleColumns)
+      ? body.visibleColumns.join(",")
+      : "name,amount,currency,paid_by,date,category,split,description";
+
+    const stmt = db.prepare(`
+      INSERT INTO group_column_visibility (id, group_id, user_id, visible_columns)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(group_id, user_id) DO UPDATE SET 
+        visible_columns = excluded.visible_columns,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+
+    stmt.run(randomUUID(), groupId, userId, visibleColumns);
+
+    return c.json({ visibleColumns: visibleColumns.split(",") });
+  } catch (error) {
+    console.error("[api:/api/groups/:id/column-visibility PUT] failed:", error);
     return c.json(
       {
         error: isUnauthorizedError(error)

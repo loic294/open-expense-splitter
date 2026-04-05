@@ -183,6 +183,20 @@ export function initializeDB() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+  // Stores per-user visible columns for each group
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS group_column_visibility (
+      id TEXT PRIMARY KEY,
+      group_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      visible_columns TEXT NOT NULL DEFAULT 'name,amount,currency,paid_by,date,category,split,description',
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(group_id, user_id),
+      FOREIGN KEY (group_id) REFERENCES batches(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
 }
 
 export default db;

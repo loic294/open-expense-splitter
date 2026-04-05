@@ -187,8 +187,8 @@ The backend will be available at http://localhost:3000
 - `GET /api/me` - Get current authenticated user profile
 - `GET /api/spendings` - Get user's spending records (only their own)
 - `POST /api/spendings` - Create a spending record
-- `GET /api/batches` - Get user's batches (owner or member)
-- `POST /api/batches` - Create a batch
+- `GET /api/groups` - Get user's groups (owner or member)
+- `POST /api/groups` - Create a group
 
 ## Database Schema
 

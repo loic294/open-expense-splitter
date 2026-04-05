@@ -9,7 +9,13 @@ import {
   type ReactNode,
 } from "react";
 import { useApiCall } from "../api";
-import type { Group, GroupForm, GroupMember, ProfileForm } from "../types";
+import type {
+  Group,
+  GroupForm,
+  GroupMember,
+  ProfileForm,
+  TransactionColumnType,
+} from "../types";
 
 interface AppDataContextValue {
   bootstrapping: boolean;
@@ -28,6 +34,10 @@ interface AppDataContextValue {
   getGroupById: (groupId?: string | null) => Group | null;
   rememberGroupId: (groupId: string) => void;
   getPreferredGroupId: () => string | null;
+  saveVisibleColumns: (
+    groupId: string,
+    visibleColumns: TransactionColumnType[],
+  ) => Promise<void>;
 }
 
 const defaultProfile: ProfileForm = {
@@ -106,7 +116,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     try {
       setLoadingGroups(true);
       const [groupData, userData] = await Promise.all([
-        apiCall("/api/batches"),
+        apiCall("/api/groups"),
         apiCall("/api/users"),
       ]);
       const nextGroups = (groupData.batches || []) as Group[];
@@ -124,7 +134,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const saveGroup = useCallback(
     async (form: GroupForm, groupId?: string | null) => {
-      const endpoint = groupId ? `/api/batches/${groupId}` : "/api/batches";
+      const endpoint = groupId ? `/api/groups/${groupId}` : "/api/groups";
       const method = groupId ? "PATCH" : "POST";
       const response = await apiCall(endpoint, {
         method,
@@ -159,6 +169,22 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       return groups.find((group) => group.id === groupId) || null;
     },
     [groups],
+  );
+
+  const saveVisibleColumns = useCallback(
+    async (groupId: string, visibleColumns: TransactionColumnType[]) => {
+      await apiCall(`/api/groups/${groupId}/column-visibility`, {
+        method: "PUT",
+        body: JSON.stringify({ visibleColumns }),
+      });
+
+      setGroups((prev) =>
+        prev.map((group) =>
+          group.id === groupId ? { ...group, visibleColumns } : group,
+        ),
+      );
+    },
+    [apiCall],
   );
 
   useEffect(() => {
@@ -200,6 +226,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       getGroupById,
       rememberGroupId,
       getPreferredGroupId,
+      saveVisibleColumns,
     }),
     [
       bootstrapping,
@@ -215,6 +242,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       getGroupById,
       rememberGroupId,
       getPreferredGroupId,
+      saveVisibleColumns,
     ],
   );
 

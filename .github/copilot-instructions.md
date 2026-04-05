@@ -178,8 +178,8 @@ AUTH0_CLIENT_SECRET=your-client-secret
 - `GET /api/me` - Get current user profile
 - `GET /api/spendings` - Get user's spendings
 - `POST /api/spendings` - Create spending record
-- `GET /api/batches` - Get user's batches
-- `POST /api/batches` - Create batch
+- `GET /api/groups` - Get user's groups
+- `POST /api/groups` - Create group
 
 ## Data Persistence
 
