@@ -36,6 +36,6 @@ export default function GroupDashboardPage() {
         group={group}
         onTransactionsChange={setTransactions}
       />
-      </div>
+    </div>
   );
 }
