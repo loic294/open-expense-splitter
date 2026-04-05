@@ -33,7 +33,9 @@ export default function LoginPage() {
                   <span className="badge badge-outline">
                     CSV import support
                   </span>
-                  <span className="badge badge-outline">Multiple currencies</span>
+                  <span className="badge badge-outline">
+                    Multiple currencies
+                  </span>
                 </div>
 
                 <div className="card-actions items-center gap-3">
