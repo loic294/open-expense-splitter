@@ -124,12 +124,29 @@ jobs:
           fi
           sed -i.bak "s|REPLACE_WITH_CF_WORKER_URL|$CF_WORKER_URL|g" wrangler.toml
 
+      - name: Inject Pages URL into static headers
+        working-directory: client
+        env:
+          CF_PAGES_PROJECT_NAME: ${{ env.CF_PAGES_PROJECT_NAME }}
+        run: |
+          if [ -z "$CF_PAGES_PROJECT_NAME" ]; then
+            echo "Error: Missing CF_PAGES_PROJECT_NAME"
+            exit 1
+          fi
+
+          CF_PAGES_URL="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
+          sed -i.bak "s|REPLACE_WITH_CF_PAGES_URL|$CF_PAGES_URL|g" public/_headers
+
       - name: Validate frontend Wrangler config
         working-directory: client
         run: |
           if grep -q 'REPLACE_WITH_CF_WORKER_URL' wrangler.toml; then
             echo "Error: client/wrangler.toml still contains REPLACE_WITH_CF_WORKER_URL"
             echo "Set GitHub variable CF_WORKER_URL"
+            exit 1
+          fi
+          if grep -q 'REPLACE_WITH_CF_PAGES_URL' public/_headers; then
+            echo "Error: client/public/_headers still contains REPLACE_WITH_CF_PAGES_URL"
             exit 1
           fi
 
