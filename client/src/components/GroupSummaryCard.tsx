@@ -27,7 +27,7 @@ function MemberIdentity({ member }: { member: GroupMember }) {
       <span className="avatar">
         <span className="w-6 rounded-full bg-base-200 text-[10px] font-medium text-base-content/70 flex items-center justify-center overflow-hidden">
           {member.picture ? (
-              <img src={member.picture} alt="" aria-hidden="true" />
+            <img src={member.picture} alt="" aria-hidden="true" />
           ) : (
             memberInitial(member)
           )}
@@ -261,7 +261,12 @@ export default function GroupSummaryCard({
       {navbarTarget &&
         createPortal(
           <div className="flex items-center gap-2">
-            <span role="status" aria-live="polite" aria-atomic="true" className="text-xs text-base-content/60">
+            <span
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              className="text-xs text-base-content/60"
+            >
               {resolvingRates ? "Loading FX rates…" : ""}
             </span>
             <select
@@ -280,10 +285,15 @@ export default function GroupSummaryCard({
           </div>,
           navbarTarget,
         )}
-      <section aria-labelledby="group-summary-heading" className="card card-border rounded-md bg-base-100 w-full shadow-sm">
+      <section
+        aria-labelledby="group-summary-heading"
+        className="card card-border rounded-md bg-base-100 w-full shadow-sm"
+      >
         <div className="card-body gap-3 p-3 md:p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 id="group-summary-heading" className="card-title text-base">Group summary</h2>
+            <h2 id="group-summary-heading" className="card-title text-base">
+              Group summary
+            </h2>
             <span className="badge badge-soft badge-primary">
               Total: {currencyLabel(summary.totalExpenses, displayCurrency)}
             </span>
