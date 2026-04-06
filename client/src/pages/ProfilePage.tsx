@@ -21,6 +21,7 @@ export default function ProfilePage() {
 
   return (
     <div className="flex flex-col gap-4">
+        <h1 className="sr-only">Profile</h1>
       <ProfileFormCard
         initialProfile={profile}
         saving={saving}
@@ -46,9 +47,9 @@ export default function ProfilePage() {
         }}
       />
 
-      <section className="card card-border bg-base-100 rounded-md w-full">
+      <section aria-labelledby="invite-users-heading" className="card card-border bg-base-100 rounded-md w-full">
         <div className="card-body p-3 md:p-4 gap-3">
-          <h2 className="card-title text-base">Invite users to the platform</h2>
+          <h2 id="invite-users-heading" className="card-title text-base">Invite users to the platform</h2>
           <p className="text-sm text-base-content/70">
             Create an invite link and share it manually. Accepted invites become
             known contacts.
@@ -61,6 +62,7 @@ export default function ProfilePage() {
               value={inviteEmail}
               onChange={(event) => setInviteEmail(event.target.value)}
               placeholder="optional email lock (friend@example.com)"
+               aria-label="Email lock for invite (optional)"
             />
             <button
               type="button"
@@ -95,7 +97,7 @@ export default function ProfilePage() {
           </div>
 
           {inviteMessage && (
-            <div className="alert alert-soft">
+            <div role="status" aria-live="polite" aria-atomic="true" className="alert alert-soft">
               <span>{inviteMessage}</span>
             </div>
           )}
@@ -118,7 +120,8 @@ export default function ProfilePage() {
                       <td>
                         <button
                           type="button"
-                          className="link link-primary"
+                            className="btn btn-xs"
+                            aria-label={`Copy invite link${invite.email ? ` for ${invite.email}` : " (no email lock)"}`}
                           onClick={() =>
                             navigator.clipboard.writeText(invite.inviteUrl)
                           }
@@ -144,9 +147,9 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      <section className="card card-border bg-base-100 rounded-md w-full">
+      <section aria-labelledby="known-contacts-heading" className="card card-border bg-base-100 rounded-md w-full">
         <div className="card-body p-3 md:p-4 gap-3">
-          <h2 className="card-title text-base">Known contacts</h2>
+          <h2 id="known-contacts-heading" className="card-title text-base">Known contacts</h2>
           <div className="flex flex-col gap-2">
             {contacts.length > 0 ? (
               contacts.map((contact) => (

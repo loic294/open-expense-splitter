@@ -187,27 +187,49 @@ export default function HomePage() {
                 <table className="table table-zebra w-full text-sm">
                   <thead>
                     <tr>
-                      <th className="text-base-content/60 font-medium">
+                      <caption className="sr-only">
+                        Feature comparison between Open Expense Splitter and
+                        competitors
+                      </caption>
+                      <th
+                        scope="col"
+                        className="text-base-content/60 font-medium"
+                      >
                         Feature
                       </th>
-                      <th className="text-center">
+                      <th scope="col" className="text-center">
                         <span className="text-success font-semibold">
                           Open Expense Splitter
                         </span>
                       </th>
-                      <th className="text-center text-base-content/60 font-medium">
+                      <th
+                        scope="col"
+                        className="text-center text-base-content/60 font-medium"
+                      >
                         Splitwise
                       </th>
-                      <th className="text-center text-base-content/60 font-medium">
+                      <th
+                        scope="col"
+                        className="text-center text-base-content/60 font-medium"
+                      >
                         SettleUp
                       </th>
-                      <th className="text-center text-base-content/60 font-medium">
+                      <th
+                        scope="col"
+                        className="text-center text-base-content/60 font-medium"
+                      >
                         Tricount
                       </th>
-                      <th className="text-center text-base-content/60 font-medium">
+                      <th
+                        scope="col"
+                        className="text-center text-base-content/60 font-medium"
+                      >
                         SplitMyExpenses
                       </th>
-                      <th className="text-center text-base-content/60 font-medium">
+                      <th
+                        scope="col"
+                        className="text-center text-base-content/60 font-medium"
+                      >
                         Splid
                       </th>
                     </tr>
@@ -335,12 +357,18 @@ export default function HomePage() {
                           ].map((val, i) => (
                             <td key={i} className="text-center">
                               {val === true ? (
-                                <span className="text-success font-bold text-base">
-                                  ✓
+                                <span
+                                  className="text-success font-bold text-base"
+                                  aria-label="Yes"
+                                >
+                                  <span aria-hidden="true">✓</span>
                                 </span>
                               ) : val === false ? (
-                                <span className="text-error font-bold text-base">
-                                  ✗
+                                <span
+                                  className="text-error font-bold text-base"
+                                  aria-label="No"
+                                >
+                                  <span aria-hidden="true">✗</span>
                                 </span>
                               ) : (
                                 <span
@@ -380,10 +408,18 @@ export default function HomePage() {
 
               <div className="space-y-2">
                 <div className="collapse collapse-arrow border border-base-300 bg-base-100">
-                  <input type="radio" name="login-faq" defaultChecked />
-                  <div className="collapse-title text-base font-medium">
+                  <input
+                    type="radio"
+                    id="faq-1"
+                    name="login-faq"
+                    defaultChecked
+                  />
+                  <label
+                    htmlFor="faq-1"
+                    className="collapse-title text-base font-medium"
+                  >
                     Is Open Expense Splitter free forever?
-                  </div>
+                  </label>
                   <div className="collapse-content text-sm leading-6 text-base-content/75">
                     Yes. The core product is free to use with no subscription
                     requirement and no paywall for existing features.
@@ -391,10 +427,13 @@ export default function HomePage() {
                 </div>
 
                 <div className="collapse collapse-arrow border border-base-300 bg-base-100">
-                  <input type="radio" name="login-faq" />
-                  <div className="collapse-title text-base font-medium">
+                  <input type="radio" id="faq-2" name="login-faq" />
+                  <label
+                    htmlFor="faq-2"
+                    className="collapse-title text-base font-medium"
+                  >
                     Do you sell or share my expense data?
-                  </div>
+                  </label>
                   <div className="collapse-content text-sm leading-6 text-base-content/75">
                     No. Your data is not sold. The app stores what is needed to
                     run your groups, and you can remove your data from your
@@ -403,10 +442,13 @@ export default function HomePage() {
                 </div>
 
                 <div className="collapse collapse-arrow border border-base-300 bg-base-100">
-                  <input type="radio" name="login-faq" />
-                  <div className="collapse-title text-base font-medium">
+                  <input type="radio" id="faq-3" name="login-faq" />
+                  <label
+                    htmlFor="faq-3"
+                    className="collapse-title text-base font-medium"
+                  >
                     What is a PWA and can I install it on my phone?
-                  </div>
+                  </label>
                   <div className="collapse-content text-sm leading-6 text-base-content/75">
                     A PWA (Progressive Web App) is a website that behaves like
                     an app when installed. On iPhone/iPad, open the site in
@@ -417,10 +459,13 @@ export default function HomePage() {
                 </div>
 
                 <div className="collapse collapse-arrow border border-base-300 bg-base-100">
-                  <input type="radio" name="login-faq" />
-                  <div className="collapse-title text-base font-medium">
+                  <input type="radio" id="faq-4" name="login-faq" />
+                  <label
+                    htmlFor="faq-4"
+                    className="collapse-title text-base font-medium"
+                  >
                     Is data encrypted?
-                  </div>
+                  </label>
                   <div className="collapse-content text-sm leading-6 text-base-content/75">
                     On the current Cloudflare-hosted version, data is encrypted
                     in transit (TLS) and encrypted at rest by Cloudflare D1.
@@ -440,10 +485,13 @@ export default function HomePage() {
                 </div>
 
                 <div className="collapse collapse-arrow border border-base-300 bg-base-100">
-                  <input type="radio" name="login-faq" />
-                  <div className="collapse-title text-base font-medium">
+                  <input type="radio" id="faq-5" name="login-faq" />
+                  <label
+                    htmlFor="faq-5"
+                    className="collapse-title text-base font-medium"
+                  >
                     What does Cloudflare Web Analytics collect?
-                  </div>
+                  </label>
                   <div className="collapse-content text-sm leading-6 text-base-content/75">
                     The public Cloudflare-hosted version uses{" "}
                     <a
@@ -464,10 +512,13 @@ export default function HomePage() {
                 </div>
 
                 <div className="collapse collapse-arrow border border-base-300 bg-base-100">
-                  <input type="radio" name="login-faq" />
-                  <div className="collapse-title text-base font-medium">
+                  <input type="radio" id="faq-6" name="login-faq" />
+                  <label
+                    htmlFor="faq-6"
+                    className="collapse-title text-base font-medium"
+                  >
                     What features are coming next?
-                  </div>
+                  </label>
                   <div className="collapse-content text-sm leading-6 text-base-content/75">
                     Receipt upload and receipt parsing are planned next, along
                     with a proper native mobile app. The goal is to keep new

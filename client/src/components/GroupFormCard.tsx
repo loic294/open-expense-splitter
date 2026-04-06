@@ -170,6 +170,7 @@ export default function GroupFormCard({
                   value={inviteEmailInput}
                   onChange={(event) => setInviteEmailInput(event.target.value)}
                   placeholder="friend@example.com"
+                  aria-label="Email address to invite"
                 />
                 <button
                   type="button"
@@ -211,6 +212,7 @@ export default function GroupFormCard({
                     setTemporaryNameInput(event.target.value)
                   }
                   placeholder="Display name"
+                  aria-label="Temporary member display name"
                 />
                 <input
                   className="input input-sm w-full"
@@ -219,6 +221,7 @@ export default function GroupFormCard({
                     setTemporaryEmailInput(event.target.value)
                   }
                   placeholder="optional-email@example.com"
+                  aria-label="Temporary member email (optional)"
                 />
                 <button
                   type="button"
@@ -271,8 +274,12 @@ export default function GroupFormCard({
         </form>
 
         {message && (
-          <div className="alert alert-soft">
-            <span>{message}</span>
+          <div role="status" aria-live="polite" aria-atomic="true">
+            {message && (
+              <div className="alert alert-soft">
+                <span>{message}</span>
+              </div>
+            )}
           </div>
         )}
       </div>

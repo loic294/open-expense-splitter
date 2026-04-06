@@ -7,7 +7,13 @@ export default function HomeRedirectPage() {
   if (bootstrapping) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center">
-        <span className="loading loading-spinner loading-lg" />
+        <span
+          className="loading loading-spinner loading-lg"
+          aria-hidden="true"
+        />
+        <span className="sr-only" role="status">
+          Loading…
+        </span>
       </div>
     );
   }

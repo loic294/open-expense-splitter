@@ -17,7 +17,13 @@ export default function GroupDashboardPage() {
   if (bootstrapping) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center">
-        <span className="loading loading-spinner loading-lg" />
+        <span
+          className="loading loading-spinner loading-lg"
+          aria-hidden="true"
+        />
+        <span className="sr-only" role="status">
+          Loading…
+        </span>
       </div>
     );
   }
@@ -28,6 +34,9 @@ export default function GroupDashboardPage() {
 
   return (
     <div className="flex flex-col gap-3">
+      <h1 className="sr-only">
+        {group.emoji} {group.name}
+      </h1>
       {group.canEdit && (
         <div className="flex justify-end">
           <button

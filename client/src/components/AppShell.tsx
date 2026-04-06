@@ -49,13 +49,19 @@ export default function AppShell() {
               <span>Open Expense Splitter</span>
             </button>
 
-            <div className="flex items-center gap-2">
+            <nav
+              aria-label="Main navigation"
+              className="flex items-center gap-2"
+            >
               <div
                 ref={(el) => setNavbarActionsEl(el)}
                 className="flex items-center gap-2"
               />
               <details className="dropdown dropdown-end">
-                <summary className="btn btn-sm gap-2">
+                <summary
+                  className="btn btn-sm gap-2"
+                  aria-label={`Group: ${loadingGroups ? "Loading groups" : activeGroup?.name || "Create your first group"}`}
+                >
                   <span>{activeGroup?.emoji || "💸"}</span>
                   <span className="max-w-40 truncate">
                     {loadingGroups
@@ -113,14 +119,24 @@ export default function AppShell() {
               </details>
 
               <details className="dropdown dropdown-end">
-                <summary className="btn btn-sm gap-2">
+                <summary
+                  className="btn btn-sm gap-2"
+                  aria-label={`User profile menu for ${profile.name || profile.email || user?.name || user?.email || "user"}`}
+                >
                   <div className="avatar">
                     <div className="w-6 rounded-md bg-base-200">
                       {profile.picture ? (
-                        <img src={profile.picture} alt="Profile" />
+                        <img src={profile.picture} alt="" aria-hidden="true" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[10px] text-base-content/50">
-                          U
+                        <div
+                          aria-hidden="true"
+                          className="w-full h-full flex items-center justify-center text-[10px] text-base-content/50"
+                        >
+                          {(profile.name ||
+                            profile.email ||
+                            user?.name ||
+                            user?.email ||
+                            "U")[0].toUpperCase()}
                         </div>
                       )}
                     </div>
@@ -155,11 +171,11 @@ export default function AppShell() {
                   </li>
                 </ul>
               </details>
-            </div>
+            </nav>
           </div>
         </header>
 
-        <main className="w-full p-3 md:p-4 flex-1">
+        <main id="main-content" className="w-full p-3 md:p-4 flex-1">
           <Outlet />
         </main>
 

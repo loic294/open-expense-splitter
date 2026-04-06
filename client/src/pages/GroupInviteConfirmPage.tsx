@@ -48,13 +48,24 @@ export default function GroupInviteConfirmPage() {
   }, [token, apiCall]);
 
   return (
-    <section className="card card-border bg-base-100 rounded-md w-full max-w-2xl mx-auto">
+    <section
+      aria-labelledby="invite-confirm-heading"
+      className="card card-border bg-base-100 rounded-md w-full max-w-2xl mx-auto"
+    >
       <div className="card-body p-4 gap-3">
-        <h2 className="card-title text-base">Group invitation</h2>
+        <h1 id="invite-confirm-heading" className="card-title text-base">
+          Group invitation
+        </h1>
 
         {loading ? (
           <div className="flex justify-center py-4">
-            <span className="loading loading-spinner loading-md" />
+            <span
+              className="loading loading-spinner loading-md"
+              aria-hidden="true"
+            />
+            <span className="sr-only" role="status">
+              Loading invite details…
+            </span>
           </div>
         ) : (
           <>
@@ -69,7 +80,7 @@ export default function GroupInviteConfirmPage() {
               </p>
             )}
             {message && (
-              <div className="alert alert-soft">
+              <div role="alert" aria-live="polite" className="alert alert-soft">
                 <span>{message}</span>
               </div>
             )}

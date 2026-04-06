@@ -94,9 +94,15 @@ function AdvancedSplitModal({
   onSave: () => void;
 }) {
   return (
-    <dialog className="modal modal-open">
+    <dialog
+      className="modal modal-open"
+      aria-modal="true"
+      aria-labelledby="split-modal-title"
+    >
       <div className="modal-box max-w-2xl">
-        <h3 className="font-semibold text-lg">Advanced split</h3>
+        <h3 id="split-modal-title" className="font-semibold text-lg">
+          Advanced split
+        </h3>
         <p className="text-sm text-base-content/70 mt-1">
           Choose who is included, then optionally set exact amounts or exact
           percentages.
@@ -220,9 +226,15 @@ function CsvImportModal({
   onImport: () => void;
 }) {
   return (
-    <dialog className="modal modal-open">
+    <dialog
+      className="modal modal-open"
+      aria-modal="true"
+      aria-labelledby="csv-modal-title"
+    >
       <div className="modal-box max-w-5xl">
-        <h3 className="font-semibold text-lg">Import transactions from CSV</h3>
+        <h3 id="csv-modal-title" className="font-semibold text-lg">
+          Import transactions from CSV
+        </h3>
         <p className="text-sm text-base-content/70 mt-1">
           {fileName} • {parsed.rows.length} row(s) detected
         </p>
@@ -237,11 +249,15 @@ function CsvImportModal({
               </p>
               <div className="flex flex-col gap-2">
                 {csvImportFields.map((field) => (
-                  <label key={field} className="fieldset">
-                    <legend className="fieldset-legend">
+                  <div key={field} className="fieldset">
+                    <label
+                      htmlFor={`csv-field-${field}`}
+                      className="fieldset-legend"
+                    >
                       {importFieldLabel(field)}
-                    </legend>
+                    </label>
                     <select
+                      id={`csv-field-${field}`}
                       className="select select-sm w-full"
                       value={mapping[field]}
                       onChange={(event) =>
@@ -255,7 +271,7 @@ function CsvImportModal({
                         </option>
                       ))}
                     </select>
-                  </label>
+                  </div>
                 ))}
               </div>
             </div>
@@ -961,7 +977,13 @@ export default function TransactionSection({
           )}
           {loadingData ? (
             <div className="flex justify-center py-4">
-              <span className="loading loading-spinner loading-md" />
+              <span
+                className="loading loading-spinner loading-md"
+                aria-hidden="true"
+              />
+              <span className="sr-only" role="status">
+                Loading transactions…
+              </span>
             </div>
           ) : transactions.length > 0 ? (
             <div className="overflow-x-auto rounded-md border border-base-300">
@@ -972,6 +994,7 @@ export default function TransactionSection({
                       <input
                         type="checkbox"
                         className="checkbox checkbox-sm"
+                        aria-label="Select all transactions"
                         checked={
                           selectedRowIds.size > 0 &&
                           selectedRowIds.size === transactions.length
@@ -1018,6 +1041,7 @@ export default function TransactionSection({
                         <input
                           type="checkbox"
                           className="checkbox checkbox-sm"
+                          aria-label={`Select ${transaction.name || "transaction"}`}
                           checked={selectedRowIds.has(transaction.id)}
                           onChange={(event) => {
                             const next = new Set(selectedRowIds);
@@ -1035,6 +1059,7 @@ export default function TransactionSection({
                           <input
                             className="input input-sm w-full min-w-28"
                             value={transaction.name}
+                            aria-label="Transaction name"
                             onChange={(event) =>
                               updateTransaction(transaction.id, (item) => ({
                                 ...item,
@@ -1058,6 +1083,7 @@ export default function TransactionSection({
                             type="number"
                             step="0.01"
                             min="0"
+                            aria-label="Amount"
                             value={
                               transaction.amount === 0 ? "" : transaction.amount
                             }
@@ -1081,6 +1107,7 @@ export default function TransactionSection({
                         <td>
                           <select
                             className="select select-sm w-full min-w-16"
+                            aria-label="Currency"
                             value={transaction.currency}
                             onChange={(event) =>
                               updateTransaction(transaction.id, (item) => ({
@@ -1123,6 +1150,7 @@ export default function TransactionSection({
                         <td>
                           <select
                             className="select select-sm w-full min-w-24"
+                            aria-label="Paid by"
                             value={transaction.paidById}
                             onChange={(event) =>
                               updateTransaction(transaction.id, (item) => ({
@@ -1144,6 +1172,7 @@ export default function TransactionSection({
                           <input
                             className="input input-sm w-full min-w-28"
                             type="date"
+                            aria-label="Transaction date"
                             value={transaction.transactionDate}
                             onChange={(event) =>
                               updateTransaction(transaction.id, (item) => ({
@@ -1165,6 +1194,7 @@ export default function TransactionSection({
                           <input
                             className="input input-sm w-full min-w-20"
                             list={categoryListId}
+                            aria-label="Category"
                             value={transaction.category}
                             onChange={(event) =>
                               updateTransaction(transaction.id, (item) => ({
@@ -1186,6 +1216,7 @@ export default function TransactionSection({
                         <td>
                           <input
                             className="input input-sm w-full min-w-28"
+                            aria-label="Description"
                             value={transaction.description}
                             onChange={(event) =>
                               updateTransaction(transaction.id, (item) => ({
@@ -1204,9 +1235,11 @@ export default function TransactionSection({
                         </td>
                       )}
                       <td className="text-xs text-base-content/60 whitespace-nowrap">
-                        {savingTransactions[transaction.id]
-                          ? "Saving…"
-                          : "Saved"}
+                        <span aria-live="polite" aria-atomic="true">
+                          {savingTransactions[transaction.id]
+                            ? "Saving…"
+                            : "Saved"}
+                        </span>
                       </td>
                       <td>
                         <button
@@ -1339,9 +1372,15 @@ export default function TransactionSection({
       )}
 
       {deleteConfirmation && (
-        <dialog className="modal modal-open">
+        <dialog
+          className="modal modal-open"
+          aria-modal="true"
+          aria-labelledby="delete-modal-title"
+        >
           <div className="modal-box max-w-md">
-            <h3 className="font-semibold text-lg">Delete transaction</h3>
+            <h3 id="delete-modal-title" className="font-semibold text-lg">
+              Delete transaction
+            </h3>
             <p className="py-3 text-sm text-base-content/70">
               This will permanently delete &ldquo;
               {deleteConfirmation.transactionName}&rdquo;.

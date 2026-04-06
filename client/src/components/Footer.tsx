@@ -6,6 +6,7 @@ export default function Footer({ center = false }: { center?: boolean }) {
   return (
     <footer className="footer w-full gap-4 py-4">
       <nav
+        aria-label="Footer navigation"
         className={`flex flex-wrap ${center ? "justify-center w-full" : "justify-start"} gap-4 text-sm`}
       >
         <Link to="/terms" className="link link-hover">

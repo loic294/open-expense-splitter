@@ -9,7 +9,7 @@ export default function TermsOfServicePage() {
           {/* Header */}
           <div className="mb-8 flex items-center gap-3">
             <Link to="/" className="link link-hover text-base-content/70">
-              ← Back
+              <span aria-hidden="true">←</span> Back to home
             </Link>
           </div>
 

@@ -51,7 +51,7 @@ export default function ProfileFormCard({
           <div className="avatar">
             <div className="w-14 rounded-md bg-base-200">
               {form.picture ? (
-                <img src={form.picture} alt="Profile" />
+                <img src={form.picture} alt="" aria-hidden="true" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-base-content/50 text-sm">
                   No image
@@ -131,8 +131,12 @@ export default function ProfileFormCard({
         </form>
 
         {message && (
-          <div className="alert alert-soft">
-            <span>{message}</span>
+          <div role="status" aria-live="polite" aria-atomic="true">
+            {message && (
+              <div className="alert alert-soft">
+                <span>{message}</span>
+              </div>
+            )}
           </div>
         )}
       </div>

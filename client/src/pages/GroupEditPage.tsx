@@ -71,6 +71,7 @@ export default function GroupEditPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <h1 className="sr-only">Group settings: {group.name}</h1>
       <GroupFormCard
         title="Update group"
         description="Set the group name, emoji, and members."
@@ -105,9 +106,14 @@ export default function GroupEditPage() {
       />
 
       {generatedInvites.length > 0 && (
-        <section className="card card-border bg-base-100 rounded-md w-full">
+        <section
+          aria-labelledby="generated-invites-heading"
+          className="card card-border bg-base-100 rounded-md w-full"
+        >
           <div className="card-body p-3 md:p-4 gap-3">
-            <h2 className="card-title text-base">Generated invite links</h2>
+            <h2 id="generated-invites-heading" className="card-title text-base">
+              Generated invite links
+            </h2>
             <div className="flex flex-col gap-2">
               {generatedInvites.map((invite) => (
                 <div
@@ -120,6 +126,7 @@ export default function GroupEditPage() {
                   <button
                     type="button"
                     className="btn btn-xs"
+                    aria-label={`Copy invite link${invite.email ? ` for ${invite.email}` : " (no email lock)"}`}
                     onClick={() =>
                       navigator.clipboard.writeText(invite.inviteUrl)
                     }
@@ -134,9 +141,14 @@ export default function GroupEditPage() {
       )}
 
       {temporaryMembers.length > 0 && (
-        <section className="card card-border bg-base-100 rounded-md w-full">
+        <section
+          aria-labelledby="temp-members-heading"
+          className="card card-border bg-base-100 rounded-md w-full"
+        >
           <div className="card-body p-3 md:p-4 gap-3">
-            <h2 className="card-title text-base">Replace temporary members</h2>
+            <h2 id="temp-members-heading" className="card-title text-base">
+              Replace temporary members
+            </h2>
             <p className="text-sm text-base-content/70">
               When a real contact joins, replace the temporary member to carry
               over past expenses.
@@ -157,6 +169,7 @@ export default function GroupEditPage() {
                     <select
                       className="select select-sm w-full md:w-64"
                       value={replacementTargets[member.id] || ""}
+                      aria-label={`Replacement contact for ${memberName(member)}`}
                       onChange={(event) =>
                         setReplacementTargets((prev) => ({
                           ...prev,
