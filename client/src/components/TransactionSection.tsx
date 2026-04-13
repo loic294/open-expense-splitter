@@ -790,6 +790,50 @@ export default function TransactionSection({
     transactionId: string | null;
   }>({ open: false, inputValue: "", transactionId: null });
 
+  const [sortField, setSortField] = useState<
+    | "name"
+    | "amount"
+    | "currency"
+    | "paidById"
+    | "transactionDate"
+    | "category"
+    | "description"
+  >("transactionDate");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  const sortedTransactions = useMemo(() => {
+    const sorted = [...transactions];
+    sorted.sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      if (sortField === "transactionDate") {
+        aValue = new Date(a.transactionDate).getTime();
+        bValue = new Date(b.transactionDate).getTime();
+      } else if (sortField === "amount") {
+        aValue = a.amount;
+        bValue = b.amount;
+      } else if (sortField === "paidById") {
+        const aMember = group.members.find((m) => m.id === a.paidById);
+        const bMember = group.members.find((m) => m.id === b.paidById);
+        aValue = aMember ? memberName(aMember) : a.paidById;
+        bValue = bMember ? memberName(bMember) : b.paidById;
+      } else {
+        aValue = a[sortField as keyof Transaction] || "";
+        bValue = b[sortField as keyof Transaction] || "";
+      }
+
+      if (aValue < bValue) {
+        return sortDirection === "asc" ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return sortDirection === "asc" ? 1 : -1;
+      }
+      return 0;
+    });
+    return sorted;
+  }, [transactions, sortField, sortDirection, group.members]);
+
   useEffect(() => {
     onTransactionsChange?.(transactions);
   }, [transactions, onTransactionsChange]);
@@ -1492,385 +1536,428 @@ export default function TransactionSection({
               </span>
             </div>
           ) : transactions.length > 0 ? (
-            <div className="overflow-x-auto rounded-md border border-base-300">
-              <table className="table table-zebra [&_td]:px-2 [&_td]:py-2 [&_th]:px-2 [&_th]:py-2 w-full [&_td]:align-middle">
-                <thead>
-                  <tr>
-                    <th className="w-10">
-                      <input
-                        type="checkbox"
-                        className="checkbox checkbox-sm"
-                        aria-label="Select all transactions"
-                        checked={
-                          selectedRowIds.size > 0 &&
-                          selectedRowIds.size === transactions.length
-                        }
-                        onChange={(event) => {
-                          if (event.target.checked) {
-                            setSelectedRowIds(
-                              new Set(transactions.map((t) => t.id)),
-                            );
-                          } else {
-                            setSelectedRowIds(new Set());
-                          }
-                        }}
-                      />
-                    </th>
-                    {getVisibleColumns(group).includes("name") && <th>Name</th>}
-                    {getVisibleColumns(group).includes("amount") && (
-                      <th>Amount</th>
-                    )}
-                    {getVisibleColumns(group).includes("currency") && (
-                      <th>Currency</th>
-                    )}
-                    {getVisibleColumns(group).includes("split") && (
-                      <th>Split</th>
-                    )}
-                    {getVisibleColumns(group).includes("paid_by") && (
-                      <th>Paid by</th>
-                    )}
-                    {getVisibleColumns(group).includes("date") && <th>Date</th>}
-                    {getVisibleColumns(group).includes("category") && (
-                      <th>Category</th>
-                    )}
-                    {getVisibleColumns(group).includes("description") && (
-                      <th>Description</th>
-                    )}
-                    {getVisibleColumns(group).includes("tags") && <th>Tags</th>}
-                    <th>Status</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {transactions.map((transaction) => (
-                    <tr key={transaction.id}>
-                      <td className="w-10">
+            <>
+              <div className="flex items-center gap-3 mb-3">
+                <label className="text-sm font-medium">Sort by:</label>
+                <select
+                  className="select select-sm"
+                  value={sortField}
+                  onChange={(e) =>
+                    setSortField(e.target.value as typeof sortField)
+                  }
+                >
+                  <option value="name">Name</option>
+                  <option value="amount">Amount</option>
+                  <option value="currency">Currency</option>
+                  <option value="paidById">Paid by</option>
+                  <option value="transactionDate">Date</option>
+                  <option value="category">Category</option>
+                  <option value="description">Description</option>
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  onClick={() =>
+                    setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+                  }
+                  title={`Sort ${sortDirection === "asc" ? "ascending" : "descending"}`}
+                >
+                  {sortDirection === "asc" ? "↑" : "↓"}
+                </button>
+              </div>
+              <div className="overflow-x-auto rounded-md border border-base-300">
+                <table className="table table-zebra [&_td]:px-2 [&_td]:py-2 [&_th]:px-2 [&_th]:py-2 w-full [&_td]:align-middle">
+                  <thead>
+                    <tr>
+                      <th className="w-10">
                         <input
                           type="checkbox"
                           className="checkbox checkbox-sm"
-                          aria-label={`Select ${transaction.name || "transaction"}`}
-                          checked={selectedRowIds.has(transaction.id)}
+                          aria-label="Select all transactions"
+                          checked={
+                            selectedRowIds.size > 0 &&
+                            selectedRowIds.size === transactions.length
+                          }
                           onChange={(event) => {
-                            const next = new Set(selectedRowIds);
                             if (event.target.checked) {
-                              next.add(transaction.id);
+                              setSelectedRowIds(
+                                new Set(transactions.map((t) => t.id)),
+                              );
                             } else {
-                              next.delete(transaction.id);
+                              setSelectedRowIds(new Set());
                             }
-                            setSelectedRowIds(next);
                           }}
                         />
-                      </td>
+                      </th>
                       {getVisibleColumns(group).includes("name") && (
-                        <td>
-                          <input
-                            className="input input-sm w-full min-w-28"
-                            value={transaction.name}
-                            aria-label="Transaction name"
-                            onChange={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                name: event.target.value,
-                              }))
-                            }
-                            onBlur={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                name: event.target.value,
-                              }))
-                            }
-                            placeholder="Dinner"
-                          />
-                        </td>
+                        <th>Name</th>
                       )}
                       {getVisibleColumns(group).includes("amount") && (
-                        <td>
-                          <input
-                            className="input input-sm w-full min-w-20"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            aria-label="Amount"
-                            value={
-                              transaction.amount === 0 ? "" : transaction.amount
-                            }
-                            placeholder="0.00"
-                            onChange={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                amount: Number(event.target.value || 0),
-                              }))
-                            }
-                            onBlur={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                amount: Number(event.target.value || 0),
-                              }))
-                            }
-                          />
-                        </td>
+                        <th>Amount</th>
                       )}
                       {getVisibleColumns(group).includes("currency") && (
-                        <td>
-                          <select
-                            className="select select-sm w-full min-w-16"
-                            aria-label="Currency"
-                            value={transaction.currency}
-                            onChange={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                currency: normalizeCurrency(event.target.value),
-                              }))
-                            }
-                          >
-                            {SUPPORTED_CURRENCIES.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
+                        <th>Currency</th>
                       )}
                       {getVisibleColumns(group).includes("split") && (
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn-sm"
-                            onClick={() => {
-                              setActiveSplitTransactionId(transaction.id);
-                              setSplitEditor({
-                                splitType: transaction.splitType,
-                                splitData: {
-                                  includedMemberIds: [
-                                    ...transaction.splitData.includedMemberIds,
-                                  ],
-                                  values: { ...transaction.splitData.values },
-                                },
-                              });
-                            }}
-                          >
-                            {splitLabel(transaction, group.members)}
-                          </button>
-                        </td>
+                        <th>Split</th>
                       )}
                       {getVisibleColumns(group).includes("paid_by") && (
-                        <td>
-                          <select
-                            className="select select-sm w-full min-w-24"
-                            aria-label="Paid by"
-                            value={transaction.paidById}
-                            onChange={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                paidById: event.target.value,
-                              }))
-                            }
-                          >
-                            {group.members.map((member) => (
-                              <option key={member.id} value={member.id}>
-                                {memberName(member)}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
+                        <th>Paid by</th>
                       )}
                       {getVisibleColumns(group).includes("date") && (
-                        <td>
-                          <input
-                            className="input input-sm w-full min-w-28"
-                            type="date"
-                            aria-label="Transaction date"
-                            value={transaction.transactionDate}
-                            onChange={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                transactionDate: event.target.value,
-                              }))
-                            }
-                            onBlur={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                transactionDate: event.target.value,
-                              }))
-                            }
-                          />
-                        </td>
+                        <th>Date</th>
                       )}
                       {getVisibleColumns(group).includes("category") && (
-                        <td>
-                          <select
-                            className="select select-sm w-full min-w-20"
-                            aria-label="Category"
-                            value={transaction.category}
-                            onChange={(event) => {
-                              if (event.target.value === "add-new") {
-                                setNewCategoryDialog({
-                                  open: true,
-                                  inputValue: "",
-                                  transactionId: transaction.id,
-                                });
-                                event.target.value = transaction.category;
-                              } else {
-                                updateTransaction(transaction.id, (item) => ({
-                                  ...item,
-                                  category: event.target.value,
-                                }));
-                              }
-                            }}
-                          >
-                            <option value="">Select category</option>
-                            {categories.map((cat) => (
-                              <option key={cat} value={cat}>
-                                {emojiMap.category[cat] &&
-                                  `${emojiMap.category[cat]} `}
-                                {cat}
-                              </option>
-                            ))}
-                            <option disabled>—</option>
-                            <option value="add-new">+ Add new category</option>
-                          </select>
-                        </td>
+                        <th>Category</th>
                       )}
                       {getVisibleColumns(group).includes("description") && (
-                        <td>
-                          <input
-                            className="input input-sm w-full min-w-28"
-                            aria-label="Description"
-                            value={transaction.description}
-                            onChange={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                description: event.target.value,
-                              }))
-                            }
-                            onBlur={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                description: event.target.value,
-                              }))
-                            }
-                            placeholder="Optional"
-                          />
-                        </td>
+                        <th>Description</th>
                       )}
                       {getVisibleColumns(group).includes("tags") && (
-                        <td>
-                          <div className="flex flex-wrap gap-1 items-center">
-                            {transaction.tags
-                              .split(",")
-                              .map((tag) => tag.trim())
-                              .filter(Boolean)
-                              .map((tag) => (
-                                <div
-                                  key={tag}
-                                  className="badge badge-sm badge-outline gap-1.5"
-                                >
-                                  {emojiMap.tag[tag] && (
-                                    <span>{emojiMap.tag[tag]}</span>
-                                  )}
-                                  {tag}
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost btn-xs p-0 h-4 w-4 min-h-fit"
-                                    onClick={() =>
-                                      updateTransaction(
-                                        transaction.id,
-                                        (item) => ({
-                                          ...item,
-                                          tags: item.tags
-                                            .split(",")
-                                            .map((t) => t.trim())
-                                            .filter((t) => t && t !== tag)
-                                            .join(", "),
-                                        }),
-                                      )
-                                    }
-                                    aria-label={`Remove tag: ${tag}`}
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              ))}
+                        <th>Tags</th>
+                      )}
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedTransactions.map((transaction) => (
+                      <tr key={transaction.id}>
+                        <td className="w-10">
+                          <input
+                            type="checkbox"
+                            className="checkbox checkbox-sm"
+                            aria-label={`Select ${transaction.name || "transaction"}`}
+                            checked={selectedRowIds.has(transaction.id)}
+                            onChange={(event) => {
+                              const next = new Set(selectedRowIds);
+                              if (event.target.checked) {
+                                next.add(transaction.id);
+                              } else {
+                                next.delete(transaction.id);
+                              }
+                              setSelectedRowIds(next);
+                            }}
+                          />
+                        </td>
+                        {getVisibleColumns(group).includes("name") && (
+                          <td>
+                            <input
+                              className="input input-sm w-full min-w-28"
+                              value={transaction.name}
+                              aria-label="Transaction name"
+                              onChange={(event) =>
+                                updateTransaction(transaction.id, (item) => ({
+                                  ...item,
+                                  name: event.target.value,
+                                }))
+                              }
+                              onBlur={(event) =>
+                                updateTransaction(transaction.id, (item) => ({
+                                  ...item,
+                                  name: event.target.value,
+                                }))
+                              }
+                              placeholder="Dinner"
+                            />
+                          </td>
+                        )}
+                        {getVisibleColumns(group).includes("amount") && (
+                          <td>
+                            <input
+                              className="input input-sm w-full min-w-20"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              aria-label="Amount"
+                              value={
+                                transaction.amount === 0
+                                  ? ""
+                                  : transaction.amount
+                              }
+                              placeholder="0.00"
+                              onChange={(event) =>
+                                updateTransaction(transaction.id, (item) => ({
+                                  ...item,
+                                  amount: Number(event.target.value || 0),
+                                }))
+                              }
+                              onBlur={(event) =>
+                                updateTransaction(transaction.id, (item) => ({
+                                  ...item,
+                                  amount: Number(event.target.value || 0),
+                                }))
+                              }
+                            />
+                          </td>
+                        )}
+                        {getVisibleColumns(group).includes("currency") && (
+                          <td>
                             <select
-                              className="select select-sm !select-xs min-w-24 max-w-32 h-6"
-                              defaultValue=""
+                              className="select select-sm w-full min-w-16"
+                              aria-label="Currency"
+                              value={transaction.currency}
+                              onChange={(event) =>
+                                updateTransaction(transaction.id, (item) => ({
+                                  ...item,
+                                  currency: normalizeCurrency(
+                                    event.target.value,
+                                  ),
+                                }))
+                              }
+                            >
+                              {SUPPORTED_CURRENCIES.map((c) => (
+                                <option key={c} value={c}>
+                                  {c}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                        )}
+                        {getVisibleColumns(group).includes("split") && (
+                          <td>
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() => {
+                                setActiveSplitTransactionId(transaction.id);
+                                setSplitEditor({
+                                  splitType: transaction.splitType,
+                                  splitData: {
+                                    includedMemberIds: [
+                                      ...transaction.splitData
+                                        .includedMemberIds,
+                                    ],
+                                    values: { ...transaction.splitData.values },
+                                  },
+                                });
+                              }}
+                            >
+                              {splitLabel(transaction, group.members)}
+                            </button>
+                          </td>
+                        )}
+                        {getVisibleColumns(group).includes("paid_by") && (
+                          <td>
+                            <select
+                              className="select select-sm w-full min-w-24"
+                              aria-label="Paid by"
+                              value={transaction.paidById}
+                              onChange={(event) =>
+                                updateTransaction(transaction.id, (item) => ({
+                                  ...item,
+                                  paidById: event.target.value,
+                                }))
+                              }
+                            >
+                              {group.members.map((member) => (
+                                <option key={member.id} value={member.id}>
+                                  {memberName(member)}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                        )}
+                        {getVisibleColumns(group).includes("date") && (
+                          <td>
+                            <input
+                              className="input input-sm w-full min-w-28"
+                              type="date"
+                              aria-label="Transaction date"
+                              value={transaction.transactionDate}
+                              onChange={(event) =>
+                                updateTransaction(transaction.id, (item) => ({
+                                  ...item,
+                                  transactionDate: event.target.value,
+                                }))
+                              }
+                              onBlur={(event) =>
+                                updateTransaction(transaction.id, (item) => ({
+                                  ...item,
+                                  transactionDate: event.target.value,
+                                }))
+                              }
+                            />
+                          </td>
+                        )}
+                        {getVisibleColumns(group).includes("category") && (
+                          <td>
+                            <select
+                              className="select select-sm w-full min-w-20"
+                              aria-label="Category"
+                              value={transaction.category}
                               onChange={(event) => {
-                                const value = event.target.value.trim();
-                                if (value === "add-new") {
-                                  setNewTagDialog({
+                                if (event.target.value === "add-new") {
+                                  setNewCategoryDialog({
                                     open: true,
                                     inputValue: "",
                                     transactionId: transaction.id,
                                   });
-                                  event.target.value = "";
-                                } else if (value) {
-                                  const currentTags = transaction.tags
-                                    .split(",")
-                                    .map((t) => t.trim())
-                                    .filter(Boolean);
-                                  if (!currentTags.includes(value)) {
-                                    const newTags = [
-                                      ...currentTags,
-                                      value,
-                                    ].sort();
-                                    updateTransaction(
-                                      transaction.id,
-                                      (item) => ({
-                                        ...item,
-                                        tags: newTags.join(", "),
-                                      }),
-                                    );
-                                    addTags(value, setTags);
-                                  }
-                                  event.target.value = "";
+                                  event.target.value = transaction.category;
+                                } else {
+                                  updateTransaction(transaction.id, (item) => ({
+                                    ...item,
+                                    category: event.target.value,
+                                  }));
                                 }
                               }}
                             >
-                              <option value="">+</option>
-                              {tags
-                                .filter(
-                                  (tag) => !transaction.tags.includes(tag),
-                                )
-                                .map((tag) => (
-                                  <option key={tag} value={tag}>
-                                    {emojiMap.tag[tag] &&
-                                      `${emojiMap.tag[tag]} `}
-                                    {tag}
-                                  </option>
-                                ))}
+                              <option value="">Select category</option>
+                              {categories.map((cat) => (
+                                <option key={cat} value={cat}>
+                                  {emojiMap.category[cat] &&
+                                    `${emojiMap.category[cat]} `}
+                                  {cat}
+                                </option>
+                              ))}
                               <option disabled>—</option>
-                              <option value="add-new">+ Add new tag</option>
+                              <option value="add-new">
+                                + Add new category
+                              </option>
                             </select>
-                          </div>
+                          </td>
+                        )}
+                        {getVisibleColumns(group).includes("description") && (
+                          <td>
+                            <input
+                              className="input input-sm w-full min-w-28"
+                              aria-label="Description"
+                              value={transaction.description}
+                              onChange={(event) =>
+                                updateTransaction(transaction.id, (item) => ({
+                                  ...item,
+                                  description: event.target.value,
+                                }))
+                              }
+                              onBlur={(event) =>
+                                updateTransaction(transaction.id, (item) => ({
+                                  ...item,
+                                  description: event.target.value,
+                                }))
+                              }
+                              placeholder="Optional"
+                            />
+                          </td>
+                        )}
+                        {getVisibleColumns(group).includes("tags") && (
+                          <td>
+                            <div className="flex flex-wrap gap-1 items-center">
+                              {transaction.tags
+                                .split(",")
+                                .map((tag) => tag.trim())
+                                .filter(Boolean)
+                                .map((tag) => (
+                                  <div
+                                    key={tag}
+                                    className="badge badge-sm badge-outline gap-1.5"
+                                  >
+                                    {emojiMap.tag[tag] && (
+                                      <span>{emojiMap.tag[tag]}</span>
+                                    )}
+                                    {tag}
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost btn-xs p-0 h-4 w-4 min-h-fit"
+                                      onClick={() =>
+                                        updateTransaction(
+                                          transaction.id,
+                                          (item) => ({
+                                            ...item,
+                                            tags: item.tags
+                                              .split(",")
+                                              .map((t) => t.trim())
+                                              .filter((t) => t && t !== tag)
+                                              .join(", "),
+                                          }),
+                                        )
+                                      }
+                                      aria-label={`Remove tag: ${tag}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                ))}
+                              <select
+                                className="select select-sm !select-xs min-w-24 max-w-32 h-6"
+                                defaultValue=""
+                                onChange={(event) => {
+                                  const value = event.target.value.trim();
+                                  if (value === "add-new") {
+                                    setNewTagDialog({
+                                      open: true,
+                                      inputValue: "",
+                                      transactionId: transaction.id,
+                                    });
+                                    event.target.value = "";
+                                  } else if (value) {
+                                    const currentTags = transaction.tags
+                                      .split(",")
+                                      .map((t) => t.trim())
+                                      .filter(Boolean);
+                                    if (!currentTags.includes(value)) {
+                                      const newTags = [
+                                        ...currentTags,
+                                        value,
+                                      ].sort();
+                                      updateTransaction(
+                                        transaction.id,
+                                        (item) => ({
+                                          ...item,
+                                          tags: newTags.join(", "),
+                                        }),
+                                      );
+                                      addTags(value, setTags);
+                                    }
+                                    event.target.value = "";
+                                  }
+                                }}
+                              >
+                                <option value="">+</option>
+                                {tags
+                                  .filter(
+                                    (tag) => !transaction.tags.includes(tag),
+                                  )
+                                  .map((tag) => (
+                                    <option key={tag} value={tag}>
+                                      {emojiMap.tag[tag] &&
+                                        `${emojiMap.tag[tag]} `}
+                                      {tag}
+                                    </option>
+                                  ))}
+                                <option disabled>—</option>
+                                <option value="add-new">+ Add new tag</option>
+                              </select>
+                            </div>
+                          </td>
+                        )}
+                        <td className="text-xs text-base-content/60 whitespace-nowrap">
+                          <span aria-live="polite" aria-atomic="true">
+                            {savingTransactions[transaction.id]
+                              ? "Saving…"
+                              : "Saved"}
+                          </span>
                         </td>
-                      )}
-                      <td className="text-xs text-base-content/60 whitespace-nowrap">
-                        <span aria-live="polite" aria-atomic="true">
-                          {savingTransactions[transaction.id]
-                            ? "Saving…"
-                            : "Saved"}
-                        </span>
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm text-error"
-                          onClick={() =>
-                            setDeleteConfirmation({
-                              transactionId: transaction.id,
-                              transactionName:
-                                transaction.name || "this transaction",
-                            })
-                          }
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm text-error"
+                            onClick={() =>
+                              setDeleteConfirmation({
+                                transactionId: transaction.id,
+                                transactionName:
+                                  transaction.name || "this transaction",
+                              })
+                            }
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           ) : (
             <div className="alert alert-soft">
               <span>
