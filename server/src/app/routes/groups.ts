@@ -399,7 +399,7 @@ export function createGroupsRouter({ db, frontendBaseUrl }: RouteDeps) {
         .first<{ visible_columns: string }>();
       const visibleColumns = row
         ? row.visible_columns.split(",")
-        : "name,amount,currency,paid_by,date,category,split,description".split(
+        : "name,amount,currency,paid_by,date,category,tags,split,description".split(
             ",",
           );
       return c.json({ visibleColumns });
@@ -434,7 +434,7 @@ export function createGroupsRouter({ db, frontendBaseUrl }: RouteDeps) {
       if (!isMember && !isOwner) return c.json({ error: "Unauthorized" }, 401);
       const visibleColumns = Array.isArray(body.visibleColumns)
         ? body.visibleColumns.join(",")
-        : "name,amount,currency,paid_by,date,category,split,description";
+        : "name,amount,currency,paid_by,date,category,tags,split,description";
       await db
         .prepare(
           `INSERT INTO group_column_visibility (id, group_id, user_id, visible_columns)

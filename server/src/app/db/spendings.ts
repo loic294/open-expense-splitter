@@ -10,7 +10,7 @@ export async function getSpendingsForBatch(
     .prepare(
       `SELECT id, user_id, batch_id,
               COALESCE(name, description) AS name,
-              details, description, amount, category, currency,
+              details, description, amount, category, tags, currency,
               date AS transaction_date, paid_by_id, split_type, split_data, created_at
        FROM spendings
        WHERE batch_id = ?

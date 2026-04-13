@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useApiCall } from "../api";
 import { useNavbarActionsTarget } from "../context/NavbarActionsContext";
@@ -11,15 +11,6 @@ import type {
   TransactionColumnType,
 } from "../types";
 import {
-  createDefaultSplitData,
-  getDateInputValue,
-  memberName,
-  normalizeCurrency,
-  normalizeTransaction,
-  SUPPORTED_CURRENCIES,
-  splitLabel,
-} from "../utils/spending";
-import {
   autoMatchMapping,
   csvImportFields,
   importFieldLabel,
@@ -30,6 +21,15 @@ import {
   type CsvImportField,
   type ParsedCsvFile,
 } from "../utils/csvImport";
+import {
+  createDefaultSplitData,
+  getDateInputValue,
+  memberName,
+  normalizeCurrency,
+  normalizeTransaction,
+  splitLabel,
+  SUPPORTED_CURRENCIES,
+} from "../utils/spending";
 
 function addCategory(
   category: string,
@@ -44,6 +44,22 @@ function addCategory(
   );
 }
 
+function addTags(
+  tags: string,
+  setTags: (updater: (prev: string[]) => string[]) => void,
+) {
+  const nextTags = tags
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+  if (nextTags.length === 0) {
+    return;
+  }
+
+  setTags((prev) => Array.from(new Set([...prev, ...nextTags])).sort());
+}
+
 function summarizeTransaction(transaction: Transaction) {
   return {
     id: transaction.id,
@@ -53,6 +69,7 @@ function summarizeTransaction(transaction: Transaction) {
     description: transaction.description,
     transactionDate: transaction.transactionDate,
     category: transaction.category,
+    tags: transaction.tags,
     paidById: transaction.paidById,
     splitType: transaction.splitType,
     splitMembers: transaction.splitData.includedMemberIds,
@@ -69,6 +86,7 @@ function getVisibleColumns(group?: Group): TransactionColumnType[] {
     "paid_by",
     "date",
     "category",
+    "tags",
     "description",
   ];
   return group?.visibleColumns || defaults;
@@ -206,6 +224,9 @@ function CsvImportModal({
   onChangeMapping,
   onCancel,
   onImport,
+  groupMembers,
+  paidByIdMapping,
+  onPaidByIdMappingChange,
 }: {
   fileName: string;
   parsed: ParsedCsvFile;
@@ -216,22 +237,139 @@ function CsvImportModal({
     description: string;
     transactionDate: string;
     category: string;
+    tags: string;
     paidById: string;
   }>;
   validCount: number;
   invalidCount: number;
   isImporting: boolean;
-  onChangeMapping: (field: CsvImportField, column: string) => void;
+  onChangeMapping: (
+    field: CsvImportField,
+    columns: string | string[] | null,
+  ) => void;
   onCancel: () => void;
   onImport: () => void;
+  groupMembers: GroupMember[];
+  paidByIdMapping: Record<string, string>;
+  onPaidByIdMappingChange: (csvValue: string, memberId: string) => void;
 }) {
+  const buildSelectedColumns = useCallback(
+    (currentMapping: CsvColumnMapping) => {
+      const result = {} as Record<CsvImportField, string[]>;
+      csvImportFields.forEach((field) => {
+        const value = currentMapping[field];
+        if (Array.isArray(value)) {
+          result[field] = value.length > 0 ? value : [""];
+        } else if (typeof value === "string" && value) {
+          result[field] = [value];
+        } else {
+          result[field] = [""];
+        }
+      });
+      return result;
+    },
+    [],
+  );
+
+  const [selectedColumns, setSelectedColumns] = useState<
+    Record<CsvImportField, string[]>
+  >(() => buildSelectedColumns(mapping));
+
+  useEffect(() => {
+    setSelectedColumns(buildSelectedColumns(mapping));
+  }, [buildSelectedColumns, mapping]);
+
+  const commitFieldMapping = useCallback(
+    (field: CsvImportField, columns: string[]) => {
+      const normalized = columns
+        .map((column) => column.trim())
+        .filter(
+          (column, index, values) =>
+            column.length > 0 && values.indexOf(column) === index,
+        );
+
+      const nextValue =
+        normalized.length === 0
+          ? null
+          : normalized.length === 1
+            ? normalized[0]
+            : normalized;
+
+      onChangeMapping(field, nextValue);
+    },
+    [onChangeMapping],
+  );
+
+  const updateFieldSelection = useCallback(
+    (field: CsvImportField, index: number, column: string) => {
+      setSelectedColumns((prev) => {
+        const nextSelections = [...prev[field]];
+        nextSelections[index] = column;
+
+        commitFieldMapping(field, nextSelections);
+
+        return {
+          ...prev,
+          [field]: nextSelections,
+        };
+      });
+    },
+    [commitFieldMapping],
+  );
+
+  const addFieldSelection = useCallback((field: CsvImportField) => {
+    setSelectedColumns((prev) => ({
+      ...prev,
+      [field]: [...prev[field], ""],
+    }));
+  }, []);
+
+  const removeFieldSelection = useCallback(
+    (field: CsvImportField, index: number) => {
+      setSelectedColumns((prev) => {
+        const nextSelections = prev[field].filter(
+          (_, itemIndex) => itemIndex !== index,
+        );
+        const normalizedSelections =
+          nextSelections.length > 0 ? nextSelections : [""];
+
+        commitFieldMapping(field, normalizedSelections);
+
+        return {
+          ...prev,
+          [field]: normalizedSelections,
+        };
+      });
+    },
+    [commitFieldMapping],
+  );
+
+  const isHeaderUsedForField = useCallback(
+    (field: CsvImportField, header: string, currentIndex: number) =>
+      selectedColumns[field].some(
+        (selectedHeader, index) =>
+          index !== currentIndex && selectedHeader === header,
+      ),
+    [selectedColumns],
+  );
+
+  const uniquePaidByValues = useMemo(() => {
+    const values = new Set<string>();
+    previewRows.forEach((row) => {
+      if (row.paidById) {
+        values.add(row.paidById);
+      }
+    });
+    return Array.from(values).sort();
+  }, [previewRows]);
+
   return (
     <dialog
       className="modal modal-open"
       aria-modal="true"
       aria-labelledby="csv-modal-title"
     >
-      <div className="modal-box max-w-5xl">
+      <div className="modal-box max-w-6xl">
         <h3 id="csv-modal-title" className="font-semibold text-lg">
           Import transactions from CSV
         </h3>
@@ -239,81 +377,189 @@ function CsvImportModal({
           {fileName} • {parsed.rows.length} row(s) detected
         </p>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <div className="card card-border bg-base-100">
+        <div className="mt-4 grid gap-4 lg:grid-cols-4">
+          <div className="card card-border bg-base-100 lg:col-span-3">
             <div className="card-body p-4 gap-3">
               <h4 className="font-semibold">Field mapping</h4>
               <p className="text-xs text-base-content/70">
-                Adjust how CSV columns map to app fields. This mapping will be
-                saved as your default for next imports.
+                Choose one primary column per field, then add optional extra
+                mappings. Extra mapped values are combined with ", ".
               </p>
-              <div className="flex flex-col gap-2">
+              <div className="grid gap-4 md:grid-cols-2">
                 {csvImportFields.map((field) => (
-                  <div key={field} className="fieldset">
-                    <label
-                      htmlFor={`csv-field-${field}`}
-                      className="fieldset-legend"
-                    >
+                  <div
+                    key={field}
+                    className="fieldset rounded-md border border-base-300 p-3"
+                  >
+                    <label className="fieldset-legend">
                       {importFieldLabel(field)}
                     </label>
-                    <select
-                      id={`csv-field-${field}`}
-                      className="select select-sm w-full"
-                      value={mapping[field]}
-                      onChange={(event) =>
-                        onChangeMapping(field, event.target.value)
-                      }
-                    >
-                      <option value="">Not mapped</option>
-                      {parsed.headers.map((header) => (
-                        <option key={header} value={header}>
-                          {header}
-                        </option>
+                    <div className="flex flex-col gap-2">
+                      {selectedColumns[field].map((selectedColumn, index) => (
+                        <div
+                          key={`${field}-${index}`}
+                          className="flex items-center gap-2"
+                        >
+                          <select
+                            className="select select-sm w-full"
+                            value={selectedColumn}
+                            onChange={(event) =>
+                              updateFieldSelection(
+                                field,
+                                index,
+                                event.target.value,
+                              )
+                            }
+                          >
+                            <option value="">
+                              {index === 0
+                                ? "Select a column"
+                                : "Select another column"}
+                            </option>
+                            {parsed.headers.map((header) => (
+                              <option
+                                key={header}
+                                value={header}
+                                disabled={isHeaderUsedForField(
+                                  field,
+                                  header,
+                                  index,
+                                )}
+                              >
+                                {header}
+                              </option>
+                            ))}
+                          </select>
+                          {index > 0 && (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-ghost btn-square"
+                              onClick={() => removeFieldSelection(field, index)}
+                              aria-label={`Remove extra mapping for ${importFieldLabel(field)}`}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
                       ))}
-                    </select>
+                      {parsed.headers.length === 0 && (
+                        <p className="text-xs text-base-content/50">
+                          No columns available
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        className="btn btn-xs btn-ghost self-start"
+                        onClick={() => addFieldSelection(field)}
+                        disabled={
+                          parsed.headers.length === 0 ||
+                          selectedColumns[field].filter(Boolean).length >=
+                            parsed.headers.length
+                        }
+                      >
+                        Add another mapping
+                      </button>
+                    </div>
+                    {selectedColumns[field].filter(Boolean).length > 0 && (
+                      <p className="text-xs text-base-content/70 mt-1">
+                        Mapped from:{" "}
+                        {selectedColumns[field].filter(Boolean).join(", ")}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
           </div>
 
-          <div className="card card-border bg-base-100">
+          <div className="card card-border bg-base-100 lg:col-span-1">
             <div className="card-body p-4 gap-3">
-              <h4 className="font-semibold">Sanitized preview</h4>
+              <h4 className="font-semibold">
+                Member mapping
+                {uniquePaidByValues.length > 0 && (
+                  <span className="text-xs text-base-content/70 ml-1">
+                    ({uniquePaidByValues.length})
+                  </span>
+                )}
+              </h4>
               <p className="text-xs text-base-content/70">
-                {validCount} valid row(s) ready, {invalidCount} row(s) skipped.
+                Map CSV values from the "Paid by" field to group members.
               </p>
-              <div className="overflow-x-auto rounded-md border border-base-300">
-                <table className="table table-sm">
-                  <thead>
-                    <tr>
-                      <th>Amount</th>
-                      <th>Name</th>
-                      <th>Date</th>
-                      <th>Category</th>
-                      <th>Paid by</th>
+              {uniquePaidByValues.length > 0 ? (
+                <div className="flex flex-col gap-2 max-h-56 overflow-y-auto">
+                  {uniquePaidByValues.map((csvValue) => (
+                    <div key={csvValue} className="flex flex-col gap-1">
+                      <p className="text-xs font-medium truncate">
+                        "{csvValue}"
+                      </p>
+                      <select
+                        className="select select-sm"
+                        value={paidByIdMapping[csvValue] || ""}
+                        onChange={(e) =>
+                          onPaidByIdMappingChange(csvValue, e.target.value)
+                        }
+                      >
+                        <option value="">Not mapped</option>
+                        {groupMembers.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {memberName(member)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-base-content/50">
+                  No payer data found in CSV. Map a "Paid by" column above.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 card card-border bg-base-100">
+          <div className="card-body p-4 gap-3">
+            <h4 className="font-semibold">Sanitized preview</h4>
+            <p className="text-xs text-base-content/70">
+              {validCount} valid row(s) ready, {invalidCount} row(s) skipped.
+            </p>
+            <div className="overflow-x-auto rounded-md border border-base-300">
+              <table className="table table-sm">
+                <thead>
+                  <tr>
+                    <th>Amount</th>
+                    <th>Name</th>
+                    <th>Description</th>
+                    <th>Date</th>
+                    <th>Category</th>
+                    <th>Tags</th>
+                    <th>Paid by</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewRows.slice(0, 6).map((row, index) => (
+                    <tr key={`${row.name}-${index}`}>
+                      <td>{row.amount.toFixed(2)}</td>
+                      <td className="truncate max-w-xs">{row.name}</td>
+                      <td className="truncate max-w-xs">
+                        {row.description || "-"}
+                      </td>
+                      <td>{row.transactionDate}</td>
+                      <td>{row.category || "-"}</td>
+                      <td className="truncate max-w-xs">{row.tags || "-"}</td>
+                      <td>{row.paidById || "-"}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {previewRows.slice(0, 6).map((row, index) => (
-                      <tr key={`${row.name}-${index}`}>
-                        <td>{row.amount.toFixed(2)}</td>
-                        <td>{row.name}</td>
-                        <td>{row.transactionDate}</td>
-                        <td>{row.category || "-"}</td>
-                        <td>{row.paidById || "-"}</td>
-                      </tr>
-                    ))}
-                    {previewRows.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="text-center text-sm">
-                          No valid rows to import with current mapping.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                  {previewRows.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="text-center text-sm">
+                        No valid rows to import with current mapping.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -351,6 +597,7 @@ export default function TransactionSection({
   const csvInputRef = useRef<HTMLInputElement | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [savingTransactions, setSavingTransactions] = useState<
     Record<string, boolean>
@@ -364,6 +611,9 @@ export default function TransactionSection({
   } | null>(null);
   const [savedImportMapping, setSavedImportMapping] =
     useState<Partial<CsvColumnMapping> | null>(null);
+  const [paidByIdMapping, setPaidByIdMapping] = useState<
+    Record<string, string>
+  >({});
   const [importState, setImportState] = useState<{
     fileName: string;
     parsed: ParsedCsvFile;
@@ -375,6 +625,9 @@ export default function TransactionSection({
     transactionId: string;
     transactionName: string;
   } | null>(null);
+  const [bulkDeleteConfirmation, setBulkDeleteConfirmation] = useState<
+    number | null
+  >(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [bulkUpdateField, setBulkUpdateField] = useState<
     | "category"
@@ -382,6 +635,7 @@ export default function TransactionSection({
     | "currency"
     | "splitType"
     | "date"
+    | "tags"
     | "description"
     | null
   >(null);
@@ -405,6 +659,7 @@ export default function TransactionSection({
       return exists ? prev : [externalTransaction, ...prev];
     });
     addCategory(externalTransaction.category, setCategories);
+    addTags(externalTransaction.tags, setTags);
   }, [externalTransaction, group.id]);
 
   const activeSplitTransaction =
@@ -412,6 +667,7 @@ export default function TransactionSection({
       (transaction) => transaction.id === activeSplitTransactionId,
     ) || null;
   const categoryListId = `category-options-${group.id}`;
+  const tagListId = `tag-options-${group.id}`;
   const mappedRows = useMemo(() => {
     if (!importState) {
       return [];
@@ -443,6 +699,7 @@ export default function TransactionSection({
     setActiveSplitTransactionId(null);
     setSplitEditor(null);
     setImportState(null);
+    setPaidByIdMapping({});
     setImportError(null);
   }, [group.id]);
 
@@ -473,12 +730,23 @@ export default function TransactionSection({
         const data = await apiCall(
           `/api/spendings?batchId=${encodeURIComponent(group.id)}`,
         );
-        setTransactions(
-          ((data.spendings || []) as any[]).map((transaction) =>
-            normalizeTransaction(transaction, group),
-          ),
+        const nextTransactions = ((data.spendings || []) as any[]).map(
+          (transaction) => normalizeTransaction(transaction, group),
         );
+        setTransactions(nextTransactions);
         setCategories((data.categories || []) as string[]);
+        setTags(
+          Array.from(
+            new Set(
+              nextTransactions.flatMap((transaction) =>
+                transaction.tags
+                  .split(",")
+                  .map((tag) => tag.trim())
+                  .filter(Boolean),
+              ),
+            ),
+          ).sort(),
+        );
         console.debug("[transactions] fetch success", {
           groupId: group.id,
           total: (data.spendings || []).length,
@@ -519,6 +787,7 @@ export default function TransactionSection({
             description: transaction.description,
             transactionDate: transaction.transactionDate,
             category: transaction.category,
+            tags: transaction.tags,
             paidById: transaction.paidById,
             splitType: transaction.splitType,
             splitData: transaction.splitData,
@@ -535,6 +804,7 @@ export default function TransactionSection({
           const normalized = normalizeTransaction(response.spending, group);
           setTransactions((prev) => [normalized, ...prev]);
           addCategory(normalized.category, setCategories);
+          addTags(normalized.tags, setTags);
           console.debug("[transactions] create stored", {
             transaction: summarizeTransaction(normalized),
           });
@@ -550,6 +820,7 @@ export default function TransactionSection({
             description: transaction.description,
             transactionDate: transaction.transactionDate,
             category: transaction.category,
+            tags: transaction.tags,
             paidById: transaction.paidById,
             splitType: transaction.splitType,
             splitData: transaction.splitData,
@@ -566,6 +837,7 @@ export default function TransactionSection({
           prev.map((item) => (item.id === normalized.id ? normalized : item)),
         );
         addCategory(normalized.category, setCategories);
+        addTags(normalized.tags, setTags);
       }
     } catch (error) {
       console.error("[transactions] persist failed", {
@@ -632,6 +904,7 @@ export default function TransactionSection({
       description: "",
       transactionDate: defaultDate,
       category: "",
+      tags: "",
       paidById: defaultPayer,
       splitType: "equal",
       splitData: createDefaultSplitData(memberIds),
@@ -709,6 +982,41 @@ export default function TransactionSection({
     }
   };
 
+  const deleteBulkTransactions = async () => {
+    if (selectedRowIds.size === 0) {
+      return;
+    }
+
+    try {
+      selectedRowIds.forEach((transactionId) => {
+        setSavingTransactions((prev) => ({ ...prev, [transactionId]: true }));
+      });
+
+      const deletePromises = Array.from(selectedRowIds).map((transactionId) =>
+        apiCall(`/api/spendings/${transactionId}`, { method: "DELETE" }),
+      );
+
+      await Promise.all(deletePromises);
+
+      setTransactions((prev) => prev.filter((t) => !selectedRowIds.has(t.id)));
+
+      console.debug("[transactions] bulk delete success", {
+        count: selectedRowIds.size,
+      });
+    } catch (error) {
+      console.error("[transactions] bulk delete failed", {
+        count: selectedRowIds.size,
+        error,
+      });
+    } finally {
+      selectedRowIds.forEach((transactionId) => {
+        setSavingTransactions((prev) => ({ ...prev, [transactionId]: false }));
+      });
+      setSelectedRowIds(new Set());
+      setBulkDeleteConfirmation(null);
+    }
+  };
+
   const handleImport = async () => {
     if (!importState) {
       return;
@@ -728,11 +1036,22 @@ export default function TransactionSection({
       setImportingCsv(true);
       setImportError(null);
 
+      // Apply paidByIdMapping to rows
+      const rowsWithMappedMembers = sanitizedRows.map((row) => {
+        if (row.paidById && paidByIdMapping[row.paidById]) {
+          return {
+            ...row,
+            paidById: paidByIdMapping[row.paidById],
+          };
+        }
+        return row;
+      });
+
       const importedResult = await apiCall("/api/spendings/import", {
         method: "POST",
         body: JSON.stringify({
           batchId: group.id,
-          rows: sanitizedRows,
+          rows: rowsWithMappedMembers,
         }),
       });
 
@@ -757,7 +1076,9 @@ export default function TransactionSection({
       });
 
       imported.forEach((item) => addCategory(item.category, setCategories));
+      imported.forEach((item) => addTags(item.tags, setTags));
       setImportState(null);
+      setPaidByIdMapping({});
     } catch (error) {
       console.error("[transactions] csv import failed", error);
       setImportError(
@@ -840,6 +1161,7 @@ export default function TransactionSection({
                           | "currency"
                           | "splitType"
                           | "date"
+                          | "tags"
                           | "description") || null,
                       )
                     }
@@ -850,6 +1172,7 @@ export default function TransactionSection({
                     <option value="currency">Currency</option>
                     <option value="splitType">Split type</option>
                     <option value="date">Date</option>
+                    <option value="tags">Tags</option>
                     <option value="description">Description</option>
                   </select>
                 </div>
@@ -910,6 +1233,16 @@ export default function TransactionSection({
                     onChange={(event) => setBulkUpdateValue(event.target.value)}
                   />
                 )}
+                {bulkUpdateField === "tags" && (
+                  <input
+                    type="text"
+                    className="input input-sm flex-1"
+                    list={tagListId}
+                    placeholder="New tags"
+                    value={bulkUpdateValue}
+                    onChange={(event) => setBulkUpdateValue(event.target.value)}
+                  />
+                )}
                 {bulkUpdateField === "description" && (
                   <input
                     type="text"
@@ -951,6 +1284,11 @@ export default function TransactionSection({
                           ...item,
                           transactionDate: bulkUpdateValue,
                         }));
+                      } else if (bulkUpdateField === "tags") {
+                        updateTransaction(transactionId, (item) => ({
+                          ...item,
+                          tags: bulkUpdateValue,
+                        }));
                       } else if (bulkUpdateField === "description") {
                         updateTransaction(transactionId, (item) => ({
                           ...item,
@@ -971,6 +1309,13 @@ export default function TransactionSection({
                   onClick={() => setSelectedRowIds(new Set())}
                 >
                   Clear
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-error"
+                  onClick={() => setBulkDeleteConfirmation(selectedRowIds.size)}
+                >
+                  Delete selected
                 </button>
               </div>
             </div>
@@ -1027,6 +1372,7 @@ export default function TransactionSection({
                     {getVisibleColumns(group).includes("category") && (
                       <th>Category</th>
                     )}
+                    {getVisibleColumns(group).includes("tags") && <th>Tags</th>}
                     {getVisibleColumns(group).includes("description") && (
                       <th>Description</th>
                     )}
@@ -1212,6 +1558,29 @@ export default function TransactionSection({
                           />
                         </td>
                       )}
+                      {getVisibleColumns(group).includes("tags") && (
+                        <td>
+                          <input
+                            className="input input-sm w-full min-w-28"
+                            list={tagListId}
+                            aria-label="Tags"
+                            value={transaction.tags}
+                            onChange={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                tags: event.target.value,
+                              }))
+                            }
+                            onBlur={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                tags: event.target.value,
+                              }))
+                            }
+                            placeholder="work, refund"
+                          />
+                        </td>
+                      )}
                       {getVisibleColumns(group).includes("description") && (
                         <td>
                           <input
@@ -1274,6 +1643,12 @@ export default function TransactionSection({
       <datalist id={categoryListId}>
         {categories.map((category) => (
           <option key={category} value={category} />
+        ))}
+      </datalist>
+
+      <datalist id={tagListId}>
+        {tags.map((tag) => (
+          <option key={tag} value={tag} />
         ))}
       </datalist>
 
@@ -1348,6 +1723,14 @@ export default function TransactionSection({
           validCount={sanitizedRows.length}
           invalidCount={Math.max(0, mappedRows.length - sanitizedRows.length)}
           isImporting={importingCsv}
+          groupMembers={group.members}
+          paidByIdMapping={paidByIdMapping}
+          onPaidByIdMappingChange={(csvValue, memberId) =>
+            setPaidByIdMapping((prev) => ({
+              ...prev,
+              [csvValue]: memberId,
+            }))
+          }
           onChangeMapping={(field, column) =>
             setImportState((prev) => {
               if (!prev) {
@@ -1365,6 +1748,7 @@ export default function TransactionSection({
           }
           onCancel={() => {
             setImportState(null);
+            setPaidByIdMapping({});
             setImportError(null);
           }}
           onImport={handleImport}
@@ -1404,6 +1788,43 @@ export default function TransactionSection({
                 {savingTransactions[deleteConfirmation.transactionId]
                   ? "Deleting…"
                   : "Delete"}
+              </button>
+            </div>
+          </div>
+        </dialog>
+      )}
+
+      {bulkDeleteConfirmation && (
+        <dialog
+          className="modal modal-open"
+          aria-modal="true"
+          aria-labelledby="bulk-delete-modal-title"
+        >
+          <div className="modal-box max-w-md">
+            <h3 id="bulk-delete-modal-title" className="font-semibold text-lg">
+              Delete {bulkDeleteConfirmation} transaction
+              {bulkDeleteConfirmation !== 1 ? "s" : ""}
+            </h3>
+            <p className="py-3 text-sm text-base-content/70">
+              This will permanently delete {bulkDeleteConfirmation} selected
+              transaction{bulkDeleteConfirmation !== 1 ? "s" : ""}. This action
+              cannot be undone.
+            </p>
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => setBulkDeleteConfirmation(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-error"
+                disabled={selectedRowIds.size === 0}
+                onClick={deleteBulkTransactions}
+              >
+                Delete {bulkDeleteConfirmation}
               </button>
             </div>
           </div>

@@ -7,6 +7,7 @@ export type TransactionColumnType =
   | "paid_by"
   | "date"
   | "category"
+  | "tags"
   | "split"
   | "description"
   | "status";
@@ -77,6 +78,7 @@ export interface Transaction {
   description: string;
   transactionDate: string;
   category: string;
+  tags: string;
   paidById: string;
   splitType: SplitType;
   splitData: SplitData;

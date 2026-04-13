@@ -233,6 +233,7 @@ export function normalizeTransaction(
     description: raw.details || "",
     transactionDate: getDateInputValue(raw.transaction_date || raw.date),
     category: raw.category || "",
+    tags: raw.tags || "",
     paidById: raw.paid_by_id || memberIds[0] || "",
     splitType: raw.split_type || "equal",
     splitData: {

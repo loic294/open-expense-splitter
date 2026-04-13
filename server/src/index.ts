@@ -7,12 +7,22 @@ import { createSqliteD1Database } from "./platform/sql-adapter";
 initializeDB();
 
 function getFrontendBaseUrl() {
-  return (
+  const url =
     process.env.APP_BASE_URL ||
     process.env.PUBLIC_FRONTEND_URL ||
     process.env.FRONTEND_URL ||
-    "http://localhost:5173"
-  );
+    "http://localhost:5173";
+
+  // Ensure we use the canonical APP_BASE_URL for invite links.
+  // If only PUBLIC_FRONTEND_URL is set (e.g., *.pages.dev), warn about missing APP_BASE_URL.
+  if (!process.env.APP_BASE_URL && process.env.PUBLIC_FRONTEND_URL) {
+    console.warn(
+      "[Warning] APP_BASE_URL not set. Invite links will use PUBLIC_FRONTEND_URL. " +
+        "Set APP_BASE_URL to your canonical domain for correct invite links.",
+    );
+  }
+
+  return url;
 }
 
 function getAllowedCorsOrigins(): string[] {

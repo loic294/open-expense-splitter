@@ -45,6 +45,7 @@ export function initializeDB() {
       details TEXT,
       amount DECIMAL(10, 2) NOT NULL,
       category TEXT,
+      tags TEXT,
       batch_id TEXT,
       paid_by_id TEXT,
       split_type TEXT DEFAULT 'equal',
@@ -63,6 +64,12 @@ export function initializeDB() {
 
   try {
     db.exec("ALTER TABLE spendings ADD COLUMN details TEXT");
+  } catch {
+    // Column already exists on subsequent runs.
+  }
+
+  try {
+    db.exec("ALTER TABLE spendings ADD COLUMN tags TEXT");
   } catch {
     // Column already exists on subsequent runs.
   }
@@ -253,7 +260,7 @@ export function initializeDB() {
       id TEXT PRIMARY KEY,
       group_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
-      visible_columns TEXT NOT NULL DEFAULT 'name,amount,currency,paid_by,date,category,split,description',
+      visible_columns TEXT NOT NULL DEFAULT 'name,amount,currency,paid_by,date,category,tags,split,description',
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(group_id, user_id),
       FOREIGN KEY (group_id) REFERENCES batches(id) ON DELETE CASCADE,

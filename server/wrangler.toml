@@ -12,9 +12,13 @@ migrations_dir = "migrations"
 
 # Non-secret configuration. Set the correct values for your deployment.
 [vars]
-# Public Pages hostname allowed for CORS.
+# Public Pages hostname, can be the .pages.dev domain or your custom domain.
+# This is used for CORS and fallback purposes.
 PUBLIC_FRONTEND_URL = "REPLACE_WITH_PUBLIC_FRONTEND_URL"
-# Canonical frontend URL used for CORS and generated links.
+# Canonical frontend URL used for generating invite links and other user-facing URLs.
+# MUST be your official domain (not .pages.dev).
+# Example: https://open-expense-splitter.loicba.me or https://myapp.com
+# Invite links will use this URL, so it must be your official domain!
 APP_BASE_URL = "REPLACE_WITH_APP_BASE_URL"
 AUTH0_DOMAIN = "YOUR_AUTH0_DOMAIN.auth0.com"
 AUTH0_CLIENT_ID = "YOUR_AUTH0_CLIENT_ID"

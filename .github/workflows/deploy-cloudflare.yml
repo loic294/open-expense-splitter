@@ -14,9 +14,12 @@ on:
 # Required repository variables (Settings → Variables → Actions):
 #   AUTH0_DOMAIN          — e.g. yourapp.auth0.com
 #   AUTH0_CLIENT_ID       — Auth0 SPA client ID
-#   PUBLIC_FRONTEND_URL   — public Pages hostname, e.g. https://open-expense-splitter.pages.dev
-#   APP_BASE_URL          — canonical frontend URL, e.g. https://open-expense-splitter.loicba.me
+#   PUBLIC_FRONTEND_URL   — public Pages URL, can be .pages.dev or your custom domain, e.g. https://open-expense-splitter.pages.dev
+#   APP_BASE_URL          — canonical frontend URL (MUST be your official domain, not .pages.dev!), e.g. https://open-expense-splitter.loicba.me
 #   CF_WORKER_URL         — URL of the deployed Worker, e.g. https://open-expense-splitter-api.<subdomain>.workers.dev
+#
+#   IMPORTANT: APP_BASE_URL should be your official domain because it's used to generate invite links.
+#              Setting it to .pages.dev will break invite links!
 #
 # One-time setup (run locally before the first deploy):
 #   cd server
@@ -79,6 +82,15 @@ jobs:
             echo "Set them in Settings -> Secrets and variables -> Actions -> Variables"
             exit 1
           fi
+
+          # Validate that APP_BASE_URL is the canonical domain (not .pages.dev)
+          if [[ "$APP_BASE_URL" == *".pages.dev"* ]]; then
+            echo "Warning: APP_BASE_URL should be your canonical domain, not the .pages.dev domain"
+            echo "APP_BASE_URL: $APP_BASE_URL"
+            echo "PUBLIC_FRONTEND_URL: $PUBLIC_FRONTEND_URL"
+            echo "Invite links will use the APP_BASE_URL, so make sure it's your official domain."
+          fi
+
           sed -i.bak "s|REPLACE_WITH_PUBLIC_FRONTEND_URL|$PUBLIC_FRONTEND_URL|g" wrangler.toml
           sed -i.bak "s|REPLACE_WITH_APP_BASE_URL|$APP_BASE_URL|g" wrangler.toml
 

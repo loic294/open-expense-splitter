@@ -68,6 +68,8 @@ export function sanitizeImportRow(
   details: string;
   transactionDate: string;
   category: string | null;
+  tags: string | null;
+  currency: string | null;
   paidById: string;
 } | null {
   const amount = sanitizeAmountValue(row.amount);
@@ -78,6 +80,8 @@ export function sanitizeImportRow(
     details: sanitizeTextValue(row.description, 300),
     transactionDate: sanitizeDateValue(row.transactionDate),
     category: sanitizeTextValue(row.category, 80) || null,
+    tags: sanitizeTextValue(row.tags, 120) || null,
+    currency: sanitizeTextValue(row.currency, 20) || null,
     paidById: resolvePaidById(row.paidById, members, fallbackUserId),
   };
 }

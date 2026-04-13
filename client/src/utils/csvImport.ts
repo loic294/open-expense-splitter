@@ -4,9 +4,11 @@ export type CsvImportField =
   | "description"
   | "transactionDate"
   | "category"
+  | "tags"
+  | "currency"
   | "paidById";
 
-export type CsvColumnMapping = Record<CsvImportField, string>;
+export type CsvColumnMapping = Record<CsvImportField, string | string[]>;
 
 export interface ParsedCsvFile {
   headers: string[];
@@ -19,6 +21,8 @@ export interface MappedCsvRow {
   description?: string;
   transactionDate?: string;
   category?: string;
+  tags?: string;
+  currency?: string;
   paidById?: string;
 }
 
@@ -28,6 +32,8 @@ const expectedFields: CsvImportField[] = [
   "description",
   "transactionDate",
   "category",
+  "tags",
+  "currency",
   "paidById",
 ];
 
@@ -36,7 +42,9 @@ const fieldSynonyms: Record<CsvImportField, string[]> = {
   name: ["name", "title", "transaction", "merchant", "payee"],
   description: ["description", "details", "note", "memo", "comment"],
   transactionDate: ["date", "transactiondate", "spenton", "createdat"],
-  category: ["category", "type", "tag", "group"],
+  category: ["category", "type", "group"],
+  tags: ["tags", "tag", "labels", "keywords"],
+  currency: ["currency", "coin", "curr", "monetary"],
   paidById: ["paidby", "payer", "paid_by", "member", "user"],
 };
 
@@ -54,6 +62,8 @@ export function emptyMapping(): CsvColumnMapping {
     description: "",
     transactionDate: "",
     category: "",
+    tags: "",
+    currency: "",
     paidById: "",
   };
 }
@@ -135,7 +145,21 @@ export function autoMatchMapping(
 
   expectedFields.forEach((field) => {
     const savedColumn = saved?.[field];
-    if (savedColumn && headers.includes(savedColumn)) {
+    if (Array.isArray(savedColumn)) {
+      const matchedColumns = savedColumn.filter((column) =>
+        headers.includes(column),
+      );
+      if (matchedColumns.length === 1) {
+        mapping[field] = matchedColumns[0];
+        return;
+      }
+      if (matchedColumns.length > 1) {
+        mapping[field] = matchedColumns;
+        return;
+      }
+    }
+
+    if (typeof savedColumn === "string" && headers.includes(savedColumn)) {
       mapping[field] = savedColumn;
       return;
     }
@@ -173,12 +197,22 @@ export function toMappedRows(
         return;
       }
 
-      const index = headerIndex[sourceColumn];
-      if (typeof index !== "number") {
-        return;
-      }
+      // Handle both single column and multiple columns (array)
+      const columns = Array.isArray(sourceColumn)
+        ? sourceColumn
+        : [sourceColumn];
+      const values: string[] = [];
 
-      mapped[field] = row[index] || "";
+      columns.forEach((column) => {
+        const index = headerIndex[column];
+        if (typeof index === "number" && row[index]) {
+          values.push(row[index]);
+        }
+      });
+
+      if (values.length > 0) {
+        mapped[field] = values.join(", ");
+      }
     });
 
     return mapped;
@@ -260,6 +294,7 @@ export function sanitizeMappedRows(rows: MappedCsvRow[]) {
         description: sanitizeText(row.description, 300),
         transactionDate: sanitizeDate(row.transactionDate),
         category: sanitizeText(row.category, 80),
+        tags: sanitizeText(row.tags, 120),
         paidById: sanitizeText(row.paidById, 120),
       };
     })

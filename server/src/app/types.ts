@@ -26,8 +26,10 @@ export type CsvImportField =
   | "description"
   | "transactionDate"
   | "category"
+  | "tags"
+  | "currency"
   | "paidById";
-export type CsvMapping = Partial<Record<CsvImportField, string>>;
+export type CsvMapping = Partial<Record<CsvImportField, string | string[]>>;
 export type CsvImportRow = Partial<
   Record<CsvImportField, string | number | null | undefined>
 >;

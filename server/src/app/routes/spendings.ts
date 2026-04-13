@@ -145,13 +145,16 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         }
         const id = `spending_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
         insertedIds.push(id);
+        const rowCurrency = sanitized.currency
+          ? normalizeCurrency(sanitized.currency)
+          : importCurrency;
         stmts.push(
           db
             .prepare(
               `INSERT INTO spendings
             (id, user_id, batch_id, name, details, description, amount,
-             category, currency, date, paid_by_id, split_type, split_data)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             category, tags, currency, date, paid_by_id, split_type, split_data)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .bind(
               id,
@@ -162,7 +165,8 @@ export function createSpendingsRouter({ db }: RouteDeps) {
               sanitized.name,
               sanitized.amount,
               sanitized.category,
-              importCurrency,
+              sanitized.tags,
+              rowCurrency,
               sanitized.transactionDate,
               sanitized.paidById,
               "equal",
@@ -201,6 +205,7 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         description?: string;
         transactionDate?: string;
         category?: string;
+        tags?: string;
         currency?: string;
         paidById?: string;
         splitType?: string;
@@ -226,8 +231,8 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         .prepare(
           `INSERT INTO spendings
         (id, user_id, batch_id, name, details, description, amount,
-         category, currency, date, paid_by_id, split_type, split_data)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         category, tags, currency, date, paid_by_id, split_type, split_data)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           id,
@@ -238,6 +243,7 @@ export function createSpendingsRouter({ db }: RouteDeps) {
           transactionName,
           body.amount ?? 0,
           body.category?.trim() || null,
+          body.tags?.trim() || null,
           currency,
           transactionDate,
           paidById,
@@ -276,6 +282,7 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         description?: string;
         transactionDate?: string;
         category?: string;
+        tags?: string;
         currency?: string;
         paidById?: string;
         splitType?: string;
@@ -306,7 +313,7 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         .prepare(
           `UPDATE spendings
        SET batch_id = ?, name = ?, details = ?, description = ?, amount = ?,
-           category = ?, currency = ?, date = ?, paid_by_id = ?,
+           category = ?, tags = ?, currency = ?, date = ?, paid_by_id = ?,
            split_type = ?, split_data = ?
        WHERE id = ?`,
         )
@@ -317,6 +324,7 @@ export function createSpendingsRouter({ db }: RouteDeps) {
           transactionName,
           body.amount ?? 0,
           body.category?.trim() || null,
+          body.tags?.trim() || null,
           currency,
           body.transactionDate || new Date().toISOString(),
           paidById,

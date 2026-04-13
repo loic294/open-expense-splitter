@@ -8,6 +8,7 @@ const COLUMN_OPTIONS: { id: TransactionColumnType; label: string }[] = [
   { id: "paid_by", label: "Paid by" },
   { id: "date", label: "Date" },
   { id: "category", label: "Category" },
+  { id: "tags", label: "Tags" },
   { id: "split", label: "Split" },
   { id: "description", label: "Description" },
 ];
