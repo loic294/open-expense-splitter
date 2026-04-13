@@ -247,24 +247,48 @@ export function normalizeTransaction(
 }
 
 export function splitLabel(transaction: Transaction, members: GroupMember[]) {
+  const includedIds =
+    transaction.splitData.includedMemberIds.length > 0
+      ? transaction.splitData.includedMemberIds
+      : members.map((member) => member.id);
+
+  const memberById = new Map(members.map((member) => [member.id, member]));
+
   if (transaction.splitType === "percent") {
-    return "Exact %";
+    return includedIds
+      .map((memberId) => {
+        const value = Number(transaction.splitData.values[memberId] ?? 0);
+        const member = memberById.get(memberId);
+        const label = member ? memberName(member) : memberId;
+        return `${label} ${value}%`;
+      })
+      .join("; ");
   }
 
   if (transaction.splitType === "amount") {
-    return "Exact amounts";
+    return includedIds
+      .map((memberId) => {
+        const value = Number(transaction.splitData.values[memberId] ?? 0);
+        const member = memberById.get(memberId);
+        const label = member ? memberName(member) : memberId;
+        return `${label} ${value.toFixed(2)}`;
+      })
+      .join("; ");
   }
 
-  const includedCount = transaction.splitData.includedMemberIds.length;
-  if (includedCount === 2) {
-    return "50 / 50";
+  const includedCount = includedIds.length;
+  if (includedCount <= 0) {
+    return "Equal";
   }
 
-  if (includedCount > 0) {
-    return `Equal (${includedCount})`;
-  }
-
-  return `Equal (${members.length})`;
+  const equalShare = (100 / includedCount).toFixed(2);
+  return includedIds
+    .map((memberId) => {
+      const member = memberById.get(memberId);
+      const label = member ? memberName(member) : memberId;
+      return `${label} ${equalShare}%`;
+    })
+    .join("; ");
 }
 
 export function memberName(member: GroupMember) {
