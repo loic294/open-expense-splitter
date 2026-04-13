@@ -1468,10 +1468,10 @@ export default function TransactionSection({
                     {getVisibleColumns(group).includes("category") && (
                       <th>Category</th>
                     )}
-                    {getVisibleColumns(group).includes("tags") && <th>Tags</th>}
                     {getVisibleColumns(group).includes("description") && (
                       <th>Description</th>
                     )}
+                    {getVisibleColumns(group).includes("tags") && <th>Tags</th>}
                     <th>Status</th>
                     <th></th>
                   </tr>
@@ -1666,6 +1666,28 @@ export default function TransactionSection({
                           </select>
                         </td>
                       )}
+                      {getVisibleColumns(group).includes("description") && (
+                        <td>
+                          <input
+                            className="input input-sm w-full min-w-28"
+                            aria-label="Description"
+                            value={transaction.description}
+                            onChange={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                description: event.target.value,
+                              }))
+                            }
+                            onBlur={(event) =>
+                              updateTransaction(transaction.id, (item) => ({
+                                ...item,
+                                description: event.target.value,
+                              }))
+                            }
+                            placeholder="Optional"
+                          />
+                        </td>
+                      )}
                       {getVisibleColumns(group).includes("tags") && (
                         <td>
                           <div className="flex flex-wrap gap-1 items-center">
@@ -1755,28 +1777,6 @@ export default function TransactionSection({
                               <option value="add-new">+ Add new tag</option>
                             </select>
                           </div>
-                        </td>
-                      )}
-                      {getVisibleColumns(group).includes("description") && (
-                        <td>
-                          <input
-                            className="input input-sm w-full min-w-28"
-                            aria-label="Description"
-                            value={transaction.description}
-                            onChange={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                description: event.target.value,
-                              }))
-                            }
-                            onBlur={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                description: event.target.value,
-                              }))
-                            }
-                            placeholder="Optional"
-                          />
                         </td>
                       )}
                       <td className="text-xs text-base-content/60 whitespace-nowrap">

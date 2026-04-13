@@ -27,7 +27,7 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         return c.json({ error: "Forbidden" }, 403);
 
       const spendings = await getSpendingsForBatch(db, batchId);
-      const { results } = await db
+      const { results: categoryResults } = await db
         .prepare(
           `SELECT DISTINCT category FROM spendings
        WHERE batch_id = ? AND category IS NOT NULL AND TRIM(category) != ''
@@ -35,9 +35,32 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         )
         .bind(batchId)
         .all<{ category: string }>();
+
+      const { results: tagResults } = await db
+        .prepare(
+          `SELECT DISTINCT tags FROM spendings
+              WHERE batch_id = ? AND tags IS NOT NULL AND TRIM(tags) != ''`,
+        )
+        .bind(batchId)
+        .all<{ tags: string }>();
+
+      // Parse tags from comma-separated strings and deduplicate
+      const tagSet = new Set<string>();
+      tagResults.forEach((row) => {
+        if (row.tags) {
+          row.tags
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+            .forEach((tag) => tagSet.add(tag));
+        }
+      });
+      const tags = Array.from(tagSet).sort();
+
       return c.json({
         spendings,
-        categories: results.map((r) => r.category),
+        categories: categoryResults.map((r) => r.category),
+        tags,
         total: spendings.length,
       });
     } catch (err) {
