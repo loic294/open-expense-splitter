@@ -97,7 +97,10 @@ export default function GroupInviteConfirmPage() {
                     setMessage(null);
                     const result = await acceptGroupInvite(token);
                     setMessage("Invite accepted. You are now in the group.");
-                    navigate(`/groups/${result.groupId}`, { replace: true });
+                    navigate(`/groups/${result.groupId}`, {
+                      replace: true,
+                      state: { inviteAccepted: true },
+                    });
                   } catch (error) {
                     setMessage(
                       error instanceof Error
