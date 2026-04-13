@@ -224,6 +224,7 @@ export default function GroupSummaryCard({
       description: "",
       transactionDate: getDateInputValue(),
       category: "",
+      tags: "",
       paidById: fromMemberId,
       splitType: "percent",
       splitData: createReimbursementSplitData(
@@ -243,6 +244,7 @@ export default function GroupSummaryCard({
           description: t.description,
           transactionDate: t.transactionDate,
           category: t.category,
+          tags: t.tags,
           paidById: t.paidById,
           splitType: t.splitType,
           splitData: t.splitData,
