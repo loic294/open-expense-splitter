@@ -46,12 +46,22 @@ const expectedFields: CsvImportField[] = [
 const fieldSynonyms: Record<CsvImportField, string[]> = {
   amount: ["amount", "total", "value", "cost", "price", "sum"],
   name: ["name", "title", "transaction", "merchant", "payee"],
-  description: ["description", "details", "note", "memo", "comment"],
-  transactionDate: ["date", "transactiondate", "spenton", "createdat"],
+  description: ["description", "details", "note", "notes", "memo", "comment"],
+  transactionDate: [
+    "date",
+    "dates & time",
+    "date & time",
+    "dates and time",
+    "date and time",
+    "datetime",
+    "transactiondate",
+    "spenton",
+    "createdat",
+  ],
   category: ["category", "type", "group"],
   tags: ["tags", "tag", "labels", "keywords"],
   currency: ["currency", "coin", "curr", "monetary"],
-  paidById: ["paidby", "payer", "paid_by", "member", "user"],
+  paidById: ["paidby", "payer", "paid_by", "member", "user", "owner"],
   splitValues: [
     "splitvalues",
     "split_values",
@@ -67,6 +77,8 @@ const fieldSynonyms: Record<CsvImportField, string[]> = {
     "splitmembers",
     "split_payers",
     "splitpayers",
+    "forwhom",
+    "for_whom",
   ],
 };
 

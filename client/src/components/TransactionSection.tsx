@@ -371,6 +371,70 @@ function CsvImportModal({
     return Array.from(values).sort();
   }, [previewRows]);
 
+  const getPreviewSplitLabel = useCallback(
+    (row: (typeof previewRows)[number]) => {
+      const valuesRaw = row.splitValues?.trim();
+      const peopleRaw = row.splitPeople?.trim();
+      if (!valuesRaw && !peopleRaw) {
+        return "Equal";
+      }
+
+      const values = valuesRaw
+        ? valuesRaw
+            .split(";")
+            .map((value) => value.trim())
+            .filter(Boolean)
+        : [];
+
+      const people = peopleRaw
+        ? peopleRaw
+            .split(";")
+            .map((person) => person.trim())
+            .filter(Boolean)
+        : [];
+
+      const mappedPeople = people.map((csvPerson) => {
+        const mappedMemberId = paidByIdMapping[csvPerson] || "";
+        if (!mappedMemberId) {
+          return `Unmapped:${csvPerson}`;
+        }
+        const member = groupMembers.find((m) => m.id === mappedMemberId);
+        return member ? memberName(member) : `Unmapped:${csvPerson}`;
+      });
+
+      if (values.length > 0 && mappedPeople.length > 0) {
+        const pairs = mappedPeople.map((person, index) => {
+          const value = values[index] || "?";
+          return `${person} ${value}`;
+        });
+        return pairs.join("; ");
+      }
+
+      if (mappedPeople.length > 0) {
+        return mappedPeople.join("; ");
+      }
+
+      if (values.length > 0) {
+        return values.join("; ");
+      }
+
+      return "Equal";
+    },
+    [groupMembers, paidByIdMapping],
+  );
+
+  const getPreviewPaidByLabel = useCallback(
+    (csvPaidByValue: string) => {
+      const mappedMemberId = paidByIdMapping[csvPaidByValue] || "";
+      if (!mappedMemberId) {
+        return "Not mapped";
+      }
+      const member = groupMembers.find((m) => m.id === mappedMemberId);
+      return member ? memberName(member) : "Not mapped";
+    },
+    [groupMembers, paidByIdMapping],
+  );
+
   return (
     <dialog
       className="modal modal-open"
@@ -565,14 +629,12 @@ function CsvImportModal({
                     <th>Date</th>
                     <th>Category</th>
                     <th>Tags</th>
+                    <th>Split</th>
                     <th>Paid by</th>
                   </tr>
                 </thead>
                 <tbody>
                   {previewRows.slice(0, 6).map((row, index) => {
-                    const paidByMember = groupMembers.find(
-                      (m) => m.id === row.paidById,
-                    );
                     return (
                       <tr key={`${row.name}-${index}`}>
                         <td>{row.amount.toFixed(2)}</td>
@@ -614,13 +676,16 @@ function CsvImportModal({
                               : "-"}
                           </div>
                         </td>
-                        <td>{paidByMember?.name || row.paidById || "-"}</td>
+                        <td className="truncate max-w-xs">
+                          {getPreviewSplitLabel(row)}
+                        </td>
+                        <td>{getPreviewPaidByLabel(row.paidById)}</td>
                       </tr>
                     );
                   })}
                   {previewRows.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="text-center text-sm">
+                      <td colSpan={9} className="text-center text-sm">
                         No valid rows to import with current mapping.
                       </td>
                     </tr>
