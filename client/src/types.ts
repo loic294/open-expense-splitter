@@ -69,6 +69,11 @@ export interface SplitData {
   values: Record<string, number>;
 }
 
+export interface CategoryTagEmojiMap {
+  category: Record<string, string>;
+  tag: Record<string, string>;
+}
+
 export interface Transaction {
   id: string;
   batchId: string;

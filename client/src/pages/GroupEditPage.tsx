@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { useApiCall } from "../api";
 import ColumnVisibilityCard from "../components/ColumnVisibilityCard";
+import CategoryTagEmojiCard from "../components/CategoryTagEmojiCard";
 import GroupFormCard from "../components/GroupFormCard";
 import { useAppData } from "../context/AppDataContext";
 import type { ContactInvite, GroupForm, TransactionColumnType } from "../types";
@@ -30,10 +31,31 @@ export default function GroupEditPage() {
   const [generatedInvites, setGeneratedInvites] = useState<ContactInvite[]>([]);
   const group = getGroupById(groupId);
 
+  const [categories, setCategories] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+
   const temporaryMembers = useMemo(
     () => group?.members.filter((member) => !!member.is_temporary) || [],
     [group],
   );
+
+  useEffect(() => {
+    const fetchCategoriesAndTags = async () => {
+      if (!group?.id) return;
+      try {
+        const data = (await apiCall(`/api/spendings?batchId=${group.id}`)) as {
+          categories?: string[];
+          tags?: string[];
+        };
+        setCategories(data.categories || []);
+        setTags(data.tags || []);
+      } catch (error) {
+        console.error("Failed to fetch categories and tags", error);
+      }
+    };
+
+    fetchCategoriesAndTags();
+  }, [group?.id, apiCall]);
 
   const initialForm = useMemo<GroupForm>(
     () => ({
@@ -233,6 +255,12 @@ export default function GroupEditPage() {
           </div>
         </section>
       )}
+
+      <CategoryTagEmojiCard
+        groupId={group.id}
+        categories={categories}
+        tags={tags}
+      />
 
       <ColumnVisibilityCard
         title="Visible columns"

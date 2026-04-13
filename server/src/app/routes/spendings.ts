@@ -7,7 +7,7 @@ import {
 } from "../utils/auth";
 import { normalizeCurrency } from "../utils/currency";
 import { serializeSplitData } from "../utils/splitData";
-import { sanitizeImportRow } from "../utils/csvSanitize";
+import { sanitizeImportRow, parseSplitFromCsv } from "../utils/csvSanitize";
 import { createId } from "../utils/id";
 import { canAccessBatch } from "../db/batches";
 import { getBatchMembers, getBatchMemberIds } from "../db/members";
@@ -123,6 +123,7 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         batchId?: string;
         rows?: CsvImportRow[];
         currency?: string;
+        paidByIdMapping?: Record<string, string>;
       }>();
       if (!body.batchId) return c.json({ error: "batchId is required" }, 400);
       if (!(await canAccessBatch(db, userId, body.batchId)))
@@ -132,6 +133,7 @@ export function createSpendingsRouter({ db }: RouteDeps) {
 
       const importCurrency = normalizeCurrency(body.currency);
       const members = await getBatchMembers(db, body.batchId);
+      const paidByIdMapping = body.paidByIdMapping || {};
       const insertedIds: string[] = [];
       let skipped = 0;
       const stmts: D1PreparedStatement[] = [];
@@ -148,6 +150,12 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         const rowCurrency = sanitized.currency
           ? normalizeCurrency(sanitized.currency)
           : importCurrency;
+        const split = parseSplitFromCsv(
+          sanitized.splitValues,
+          sanitized.splitPeople,
+          members as any,
+          paidByIdMapping,
+        );
         stmts.push(
           db
             .prepare(
@@ -169,8 +177,8 @@ export function createSpendingsRouter({ db }: RouteDeps) {
               rowCurrency,
               sanitized.transactionDate,
               sanitized.paidById,
-              "equal",
-              serializeSplitData(null),
+              split.type,
+              serializeSplitData(split.data),
             ),
         );
       }

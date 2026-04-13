@@ -267,6 +267,21 @@ export function initializeDB() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+  // Stores emoji assignments for categories and tags per batch
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS category_tag_emojis (
+      id TEXT PRIMARY KEY,
+      batch_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      emoji TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(batch_id, type, name),
+      FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE CASCADE
+    )
+  `);
 }
 
 export default db;

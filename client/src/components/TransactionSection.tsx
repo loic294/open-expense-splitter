@@ -227,6 +227,7 @@ function CsvImportModal({
   groupMembers,
   paidByIdMapping,
   onPaidByIdMappingChange,
+  emojiMap,
 }: {
   fileName: string;
   parsed: ParsedCsvFile;
@@ -238,7 +239,10 @@ function CsvImportModal({
     transactionDate: string;
     category: string;
     tags: string;
+    currency: string;
     paidById: string;
+    splitValues: string;
+    splitPeople: string;
   }>;
   validCount: number;
   invalidCount: number;
@@ -252,6 +256,10 @@ function CsvImportModal({
   groupMembers: GroupMember[];
   paidByIdMapping: Record<string, string>;
   onPaidByIdMappingChange: (csvValue: string, memberId: string) => void;
+  emojiMap: {
+    category: Record<string, string>;
+    tag: Record<string, string>;
+  };
 }) {
   const buildSelectedColumns = useCallback(
     (currentMapping: CsvColumnMapping) => {
@@ -377,15 +385,37 @@ function CsvImportModal({
           {fileName} • {parsed.rows.length} row(s) detected
         </p>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-4">
-          <div className="card card-border bg-base-100 lg:col-span-3">
+        <div className="mt-4 flex flex-col gap-4">
+          <div className="alert alert-info alert-soft p-3">
+            <div className="text-sm">
+              <p className="font-medium mb-2">Split Format (Optional)</p>
+              <p className="text-xs text-base-content/80">
+                To set up expense splits, map two columns:
+              </p>
+              <ul className="text-xs text-base-content/80 mt-2 ml-4 list-disc space-y-1">
+                <li>
+                  <strong>Split Values:</strong> Amounts or percentages
+                  separated by ";" (e.g., "10; 20; 15" or "50%; 30%; 20%")
+                </li>
+                <li>
+                  <strong>Split People:</strong> Names/emails matching your
+                  member mapping, separated by ";" (e.g., "Alice; Bob; Charlie")
+                </li>
+              </ul>
+              <p className="text-xs text-base-content/70 mt-2">
+                If no split is mapped, all transactions will use equal split.
+              </p>
+            </div>
+          </div>
+
+          <div className="card card-border bg-base-100">
             <div className="card-body p-4 gap-3">
               <h4 className="font-semibold">Field mapping</h4>
               <p className="text-xs text-base-content/70">
                 Choose one primary column per field, then add optional extra
                 mappings. Extra mapped values are combined with ", ".
               </p>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 {csvImportFields.map((field) => (
                   <div
                     key={field}
@@ -472,7 +502,7 @@ function CsvImportModal({
             </div>
           </div>
 
-          <div className="card card-border bg-base-100 lg:col-span-1">
+          <div className="card card-border bg-base-100">
             <div className="card-body p-4 gap-3">
               <h4 className="font-semibold">
                 Member mapping
@@ -529,6 +559,7 @@ function CsvImportModal({
                 <thead>
                   <tr>
                     <th>Amount</th>
+                    <th>Currency</th>
                     <th>Name</th>
                     <th>Description</th>
                     <th>Date</th>
@@ -538,22 +569,58 @@ function CsvImportModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {previewRows.slice(0, 6).map((row, index) => (
-                    <tr key={`${row.name}-${index}`}>
-                      <td>{row.amount.toFixed(2)}</td>
-                      <td className="truncate max-w-xs">{row.name}</td>
-                      <td className="truncate max-w-xs">
-                        {row.description || "-"}
-                      </td>
-                      <td>{row.transactionDate}</td>
-                      <td>{row.category || "-"}</td>
-                      <td className="truncate max-w-xs">{row.tags || "-"}</td>
-                      <td>{row.paidById || "-"}</td>
-                    </tr>
-                  ))}
+                  {previewRows.slice(0, 6).map((row, index) => {
+                    const paidByMember = groupMembers.find(
+                      (m) => m.id === row.paidById,
+                    );
+                    return (
+                      <tr key={`${row.name}-${index}`}>
+                        <td>{row.amount.toFixed(2)}</td>
+                        <td>{row.currency || "-"}</td>
+                        <td className="truncate max-w-xs">{row.name}</td>
+                        <td className="truncate max-w-xs">
+                          {row.description || "-"}
+                        </td>
+                        <td>{row.transactionDate}</td>
+                        <td>
+                          {row.category ? (
+                            <div className="flex items-center gap-1">
+                              {emojiMap.category[row.category] && (
+                                <span className="text-base">
+                                  {emojiMap.category[row.category]}
+                                </span>
+                              )}
+                              {row.category}
+                            </div>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                        <td>
+                          <div className="flex flex-wrap gap-1">
+                            {row.tags
+                              ? row.tags
+                                  .split(",")
+                                  .map((tag) => tag.trim())
+                                  .filter(Boolean)
+                                  .map((tag) => (
+                                    <span key={tag} className="badge badge-xs">
+                                      {emojiMap.tag[tag] && (
+                                        <span>{emojiMap.tag[tag]}</span>
+                                      )}
+                                      {tag}
+                                    </span>
+                                  ))
+                              : "-"}
+                          </div>
+                        </td>
+                        <td>{paidByMember?.name || row.paidById || "-"}</td>
+                      </tr>
+                    );
+                  })}
                   {previewRows.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="text-center text-sm">
+                      <td colSpan={8} className="text-center text-sm">
                         No valid rows to import with current mapping.
                       </td>
                     </tr>
@@ -598,6 +665,13 @@ export default function TransactionSection({
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
+  const [emojiMap, setEmojiMap] = useState<{
+    category: Record<string, string>;
+    tag: Record<string, string>;
+  }>({
+    category: {},
+    tag: {},
+  });
   const [loadingData, setLoadingData] = useState(false);
   const [savingTransactions, setSavingTransactions] = useState<
     Record<string, boolean>
@@ -640,6 +714,16 @@ export default function TransactionSection({
     | null
   >(null);
   const [bulkUpdateValue, setBulkUpdateValue] = useState<string>("");
+  const [newCategoryDialog, setNewCategoryDialog] = useState<{
+    open: boolean;
+    inputValue: string;
+    transactionId: string | null;
+  }>({ open: false, inputValue: "", transactionId: null });
+  const [newTagDialog, setNewTagDialog] = useState<{
+    open: boolean;
+    inputValue: string;
+    transactionId: string | null;
+  }>({ open: false, inputValue: "", transactionId: null });
 
   useEffect(() => {
     onTransactionsChange?.(transactions);
@@ -747,6 +831,17 @@ export default function TransactionSection({
             ),
           ).sort(),
         );
+
+        // Fetch emojis for categories and tags
+        try {
+          const emojiData = await apiCall(
+            `/api/batches/${encodeURIComponent(group.id)}/emojis`,
+          );
+          setEmojiMap(emojiData);
+        } catch (error) {
+          console.error("[transactions] emoji fetch failed", error);
+        }
+
         console.debug("[transactions] fetch success", {
           groupId: group.id,
           total: (data.spendings || []).length,
@@ -1052,6 +1147,7 @@ export default function TransactionSection({
         body: JSON.stringify({
           batchId: group.id,
           rows: rowsWithMappedMembers,
+          paidByIdMapping: paidByIdMapping,
         }),
       });
 
@@ -1537,48 +1633,128 @@ export default function TransactionSection({
                       )}
                       {getVisibleColumns(group).includes("category") && (
                         <td>
-                          <input
-                            className="input input-sm w-full min-w-20"
-                            list={categoryListId}
+                          <select
+                            className="select select-sm w-full min-w-20"
                             aria-label="Category"
                             value={transaction.category}
-                            onChange={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                category: event.target.value,
-                              }))
-                            }
-                            onBlur={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                category: event.target.value,
-                              }))
-                            }
-                            placeholder="Food"
-                          />
+                            onChange={(event) => {
+                              if (event.target.value === "add-new") {
+                                setNewCategoryDialog({
+                                  open: true,
+                                  inputValue: "",
+                                  transactionId: transaction.id,
+                                });
+                                event.target.value = transaction.category;
+                              } else {
+                                updateTransaction(transaction.id, (item) => ({
+                                  ...item,
+                                  category: event.target.value,
+                                }));
+                              }
+                            }}
+                          >
+                            <option value="">Select category</option>
+                            {categories.map((cat) => (
+                              <option key={cat} value={cat}>
+                                {emojiMap.category[cat] &&
+                                  `${emojiMap.category[cat]} `}
+                                {cat}
+                              </option>
+                            ))}
+                            <option disabled>—</option>
+                            <option value="add-new">+ Add new category</option>
+                          </select>
                         </td>
                       )}
                       {getVisibleColumns(group).includes("tags") && (
                         <td>
-                          <input
-                            className="input input-sm w-full min-w-28"
-                            list={tagListId}
-                            aria-label="Tags"
-                            value={transaction.tags}
-                            onChange={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                tags: event.target.value,
-                              }))
-                            }
-                            onBlur={(event) =>
-                              updateTransaction(transaction.id, (item) => ({
-                                ...item,
-                                tags: event.target.value,
-                              }))
-                            }
-                            placeholder="work, refund"
-                          />
+                          <div className="flex flex-wrap gap-1 items-center">
+                            {transaction.tags
+                              .split(",")
+                              .map((tag) => tag.trim())
+                              .filter(Boolean)
+                              .map((tag) => (
+                                <div
+                                  key={tag}
+                                  className="badge badge-sm badge-outline gap-1.5"
+                                >
+                                  {emojiMap.tag[tag] && (
+                                    <span>{emojiMap.tag[tag]}</span>
+                                  )}
+                                  {tag}
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-xs p-0 h-4 w-4 min-h-fit"
+                                    onClick={() =>
+                                      updateTransaction(
+                                        transaction.id,
+                                        (item) => ({
+                                          ...item,
+                                          tags: item.tags
+                                            .split(",")
+                                            .map((t) => t.trim())
+                                            .filter((t) => t && t !== tag)
+                                            .join(", "),
+                                        }),
+                                      )
+                                    }
+                                    aria-label={`Remove tag: ${tag}`}
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                            <select
+                              className="select select-sm !select-xs min-w-24 max-w-32 h-6"
+                              defaultValue=""
+                              onChange={(event) => {
+                                const value = event.target.value.trim();
+                                if (value === "add-new") {
+                                  setNewTagDialog({
+                                    open: true,
+                                    inputValue: "",
+                                    transactionId: transaction.id,
+                                  });
+                                  event.target.value = "";
+                                } else if (value) {
+                                  const currentTags = transaction.tags
+                                    .split(",")
+                                    .map((t) => t.trim())
+                                    .filter(Boolean);
+                                  if (!currentTags.includes(value)) {
+                                    const newTags = [
+                                      ...currentTags,
+                                      value,
+                                    ].sort();
+                                    updateTransaction(
+                                      transaction.id,
+                                      (item) => ({
+                                        ...item,
+                                        tags: newTags.join(", "),
+                                      }),
+                                    );
+                                    addTags(value, setTags);
+                                  }
+                                  event.target.value = "";
+                                }
+                              }}
+                            >
+                              <option value="">+</option>
+                              {tags
+                                .filter(
+                                  (tag) => !transaction.tags.includes(tag),
+                                )
+                                .map((tag) => (
+                                  <option key={tag} value={tag}>
+                                    {emojiMap.tag[tag] &&
+                                      `${emojiMap.tag[tag]} `}
+                                    {tag}
+                                  </option>
+                                ))}
+                              <option disabled>—</option>
+                              <option value="add-new">+ Add new tag</option>
+                            </select>
+                          </div>
                         </td>
                       )}
                       {getVisibleColumns(group).includes("description") && (
@@ -1752,7 +1928,208 @@ export default function TransactionSection({
             setImportError(null);
           }}
           onImport={handleImport}
+          emojiMap={emojiMap}
         />
+      )}
+
+      {newCategoryDialog.open && (
+        <dialog
+          className="modal modal-open"
+          aria-modal="true"
+          aria-labelledby="new-category-title"
+        >
+          <div className="modal-box max-w-md">
+            <h3 id="new-category-title" className="font-semibold text-lg">
+              Add new category
+            </h3>
+            <input
+              autoFocus
+              type="text"
+              placeholder="Enter category name"
+              className="input input-bordered w-full mt-3"
+              value={newCategoryDialog.inputValue}
+              onChange={(e) =>
+                setNewCategoryDialog((prev) => ({
+                  ...prev,
+                  inputValue: e.target.value,
+                }))
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const value = newCategoryDialog.inputValue.trim();
+                  if (value && !categories.includes(value)) {
+                    addCategory(value, setCategories);
+                    if (newCategoryDialog.transactionId) {
+                      updateTransaction(
+                        newCategoryDialog.transactionId,
+                        (item) => ({
+                          ...item,
+                          category: value,
+                        }),
+                      );
+                    }
+                    setNewCategoryDialog({
+                      open: false,
+                      inputValue: "",
+                      transactionId: null,
+                    });
+                  }
+                } else if (e.key === "Escape") {
+                  setNewCategoryDialog({
+                    open: false,
+                    inputValue: "",
+                    transactionId: null,
+                  });
+                }
+              }}
+            />
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() =>
+                  setNewCategoryDialog({
+                    open: false,
+                    inputValue: "",
+                    transactionId: null,
+                  })
+                }
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  const value = newCategoryDialog.inputValue.trim();
+                  if (value && !categories.includes(value)) {
+                    addCategory(value, setCategories);
+                    if (newCategoryDialog.transactionId) {
+                      updateTransaction(
+                        newCategoryDialog.transactionId,
+                        (item) => ({
+                          ...item,
+                          category: value,
+                        }),
+                      );
+                    }
+                    setNewCategoryDialog({
+                      open: false,
+                      inputValue: "",
+                      transactionId: null,
+                    });
+                  }
+                }}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </dialog>
+      )}
+
+      {newTagDialog.open && (
+        <dialog
+          className="modal modal-open"
+          aria-modal="true"
+          aria-labelledby="new-tag-title"
+        >
+          <div className="modal-box max-w-md">
+            <h3 id="new-tag-title" className="font-semibold text-lg">
+              Add new tag
+            </h3>
+            <input
+              autoFocus
+              type="text"
+              placeholder="Enter tag name"
+              className="input input-bordered w-full mt-3"
+              value={newTagDialog.inputValue}
+              onChange={(e) =>
+                setNewTagDialog((prev) => ({
+                  ...prev,
+                  inputValue: e.target.value,
+                }))
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const value = newTagDialog.inputValue.trim();
+                  if (value && !tags.includes(value)) {
+                    addTags(value, setTags);
+                    if (newTagDialog.transactionId) {
+                      const currentTags =
+                        transactions
+                          .find((t) => t.id === newTagDialog.transactionId)
+                          ?.tags.split(",")
+                          .map((t) => t.trim())
+                          .filter(Boolean) || [];
+                      const newTags = [...currentTags, value].sort();
+                      updateTransaction(newTagDialog.transactionId, (item) => ({
+                        ...item,
+                        tags: newTags.join(", "),
+                      }));
+                    }
+                    setNewTagDialog({
+                      open: false,
+                      inputValue: "",
+                      transactionId: null,
+                    });
+                  }
+                } else if (e.key === "Escape") {
+                  setNewTagDialog({
+                    open: false,
+                    inputValue: "",
+                    transactionId: null,
+                  });
+                }
+              }}
+            />
+            <div className="modal-action">
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() =>
+                  setNewTagDialog({
+                    open: false,
+                    inputValue: "",
+                    transactionId: null,
+                  })
+                }
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  const value = newTagDialog.inputValue.trim();
+                  if (value && !tags.includes(value)) {
+                    addTags(value, setTags);
+                    if (newTagDialog.transactionId) {
+                      const currentTags =
+                        transactions
+                          .find((t) => t.id === newTagDialog.transactionId)
+                          ?.tags.split(",")
+                          .map((t) => t.trim())
+                          .filter(Boolean) || [];
+                      const newTags = [...currentTags, value].sort();
+                      updateTransaction(newTagDialog.transactionId, (item) => ({
+                        ...item,
+                        tags: newTags.join(", "),
+                      }));
+                    }
+                    setNewTagDialog({
+                      open: false,
+                      inputValue: "",
+                      transactionId: null,
+                    });
+                  }
+                }}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </dialog>
       )}
 
       {deleteConfirmation && (

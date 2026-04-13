@@ -71,6 +71,8 @@ export function sanitizeImportRow(
   tags: string | null;
   currency: string | null;
   paidById: string;
+  splitValues: string | null;
+  splitPeople: string | null;
 } | null {
   const amount = sanitizeAmountValue(row.amount);
   if (amount === null) return null;
@@ -83,5 +85,82 @@ export function sanitizeImportRow(
     tags: sanitizeTextValue(row.tags, 120) || null,
     currency: sanitizeTextValue(row.currency, 20) || null,
     paidById: resolvePaidById(row.paidById, members, fallbackUserId),
+    splitValues: sanitizeTextValue(row.splitValues, 300) || null,
+    splitPeople: sanitizeTextValue(row.splitPeople, 300) || null,
+  };
+}
+
+export function parseSplitFromCsv(
+  splitValuesStr: string | null,
+  splitPeopleStr: string | null,
+  members: Array<{ id: string; email: string; name: string | null }>,
+  paidByIdMapping: Record<string, string>,
+): {
+  type: "equal" | "amount" | "percent";
+  data: { includedMemberIds: string[]; values: Record<string, number> } | null;
+} {
+  // If no split data provided, return equal split with no data
+  if (!splitValuesStr || !splitPeopleStr) {
+    return { type: "equal", data: null };
+  }
+
+  const valuesParts = splitValuesStr
+    .split(";")
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+  const peopleParts = splitPeopleStr
+    .split(";")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+
+  // Lists must have same length
+  if (valuesParts.length !== peopleParts.length || valuesParts.length === 0) {
+    return { type: "equal", data: null };
+  }
+
+  // Parse values as numbers
+  const parsedValues: number[] = [];
+  for (const val of valuesParts) {
+    const num = parseFloat(val.replace(/,/g, ".").replace(/%/g, ""));
+    if (Number.isNaN(num) || num < 0) {
+      return { type: "equal", data: null };
+    }
+    parsedValues.push(num);
+  }
+
+  // Resolve people to member IDs
+  const includedMemberIds: string[] = [];
+  const values: Record<string, number> = {};
+
+  for (let i = 0; i < peopleParts.length; i++) {
+    const person = peopleParts[i];
+    // First try paidByIdMapping, then try direct member lookup
+    let memberId = paidByIdMapping[person];
+    if (!memberId) {
+      const member = members.find(
+        (m) =>
+          m.id === person ||
+          m.email === person ||
+          (m.name && m.name.toLowerCase() === person.toLowerCase()),
+      );
+      memberId = member?.id;
+    }
+    if (!memberId) {
+      // If we can't resolve a person, fall back to equal split
+      return { type: "equal", data: null };
+    }
+    if (!includedMemberIds.includes(memberId)) {
+      includedMemberIds.push(memberId);
+    }
+    values[memberId] = (values[memberId] || 0) + parsedValues[i];
+  }
+
+  // Determine split type: if any value looks like percent, assume percent; otherwise amount
+  const isPercent = valuesParts.some((v) => v.includes("%"));
+  const splitType = isPercent ? "percent" : "amount";
+
+  return {
+    type: splitType,
+    data: { includedMemberIds, values },
   };
 }

@@ -6,7 +6,9 @@ export type CsvImportField =
   | "category"
   | "tags"
   | "currency"
-  | "paidById";
+  | "paidById"
+  | "splitValues"
+  | "splitPeople";
 
 export type CsvColumnMapping = Record<CsvImportField, string | string[]>;
 
@@ -24,6 +26,8 @@ export interface MappedCsvRow {
   tags?: string;
   currency?: string;
   paidById?: string;
+  splitValues?: string;
+  splitPeople?: string;
 }
 
 const expectedFields: CsvImportField[] = [
@@ -35,6 +39,8 @@ const expectedFields: CsvImportField[] = [
   "tags",
   "currency",
   "paidById",
+  "splitValues",
+  "splitPeople",
 ];
 
 const fieldSynonyms: Record<CsvImportField, string[]> = {
@@ -46,6 +52,22 @@ const fieldSynonyms: Record<CsvImportField, string[]> = {
   tags: ["tags", "tag", "labels", "keywords"],
   currency: ["currency", "coin", "curr", "monetary"],
   paidById: ["paidby", "payer", "paid_by", "member", "user"],
+  splitValues: [
+    "splitvalues",
+    "split_values",
+    "split_amounts",
+    "splitamounts",
+    "split_percents",
+    "splitpercents",
+  ],
+  splitPeople: [
+    "splitpeople",
+    "split_people",
+    "split_members",
+    "splitmembers",
+    "split_payers",
+    "splitpayers",
+  ],
 };
 
 function normalizeHeader(value: string): string {
@@ -65,6 +87,8 @@ export function emptyMapping(): CsvColumnMapping {
     tags: "",
     currency: "",
     paidById: "",
+    splitValues: "",
+    splitPeople: "",
   };
 }
 
@@ -295,7 +319,10 @@ export function sanitizeMappedRows(rows: MappedCsvRow[]) {
         transactionDate: sanitizeDate(row.transactionDate),
         category: sanitizeText(row.category, 80),
         tags: sanitizeText(row.tags, 120),
+        currency: sanitizeText(row.currency, 20),
         paidById: sanitizeText(row.paidById, 120),
+        splitValues: sanitizeText(row.splitValues, 300),
+        splitPeople: sanitizeText(row.splitPeople, 300),
       };
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
@@ -308,6 +335,14 @@ export function importFieldLabel(field: CsvImportField): string {
 
   if (field === "paidById") {
     return "Paid By";
+  }
+
+  if (field === "splitValues") {
+    return "Split Values";
+  }
+
+  if (field === "splitPeople") {
+    return "Split People";
   }
 
   return field.charAt(0).toUpperCase() + field.slice(1);

@@ -9,6 +9,7 @@ import { createSpendingsRouter } from "./routes/spendings";
 import { createGroupsRouter } from "./routes/groups";
 import { createGroupInvitesRouter } from "./routes/groupInvites";
 import { createExchangeRatesRouter } from "./routes/exchangeRates";
+import { createCategoryTagEmojisRouter } from "./routes/categoryTagEmojis";
 
 // ---------------------------------------------------------------------------
 // App factory
@@ -94,6 +95,7 @@ export function createApiApp(options: ApiAppOptions) {
   app.route("/", createGroupsRouter(deps));
   app.route("/", createGroupInvitesRouter(deps));
   app.route("/", createExchangeRatesRouter(deps));
+  app.route("/", createCategoryTagEmojisRouter(deps));
 
   app.notFound((c) => c.json({ error: "Not Found" }, 404));
   app.onError((err, c) => {

@@ -1,5 +1,5 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
 import logo from "../assets/OpenExpenseSplitterLogo.svg";
 import { useAppData } from "../context/AppDataContext";
@@ -22,11 +22,18 @@ export default function AppShell() {
   const [navbarActionsEl, setNavbarActionsEl] = useState<HTMLDivElement | null>(
     null,
   );
+  const groupsDropdownRef = useRef<HTMLDetailsElement>(null);
+  const userDropdownRef = useRef<HTMLDetailsElement>(null);
 
   const currentGroup = getGroupById(params.groupId);
   const fallbackGroup = getGroupById(getPreferredGroupId());
   const activeGroup = currentGroup || fallbackGroup;
   const isProfileRoute = location.pathname === "/profile";
+
+  const closeDropdowns = () => {
+    if (groupsDropdownRef.current) groupsDropdownRef.current.open = false;
+    if (userDropdownRef.current) userDropdownRef.current.open = false;
+  };
 
   return (
     <NavbarActionsContext.Provider value={navbarActionsEl}>
@@ -57,7 +64,10 @@ export default function AppShell() {
                 ref={(el) => setNavbarActionsEl(el)}
                 className="flex items-center gap-2"
               />
-              <details className="dropdown dropdown-end">
+              <details
+                className="dropdown dropdown-end"
+                ref={groupsDropdownRef}
+              >
                 <summary
                   className="btn btn-sm gap-2"
                   aria-label={`Group: ${loadingGroups ? "Loading groups" : activeGroup?.name || "Create your first group"}`}
@@ -81,6 +91,7 @@ export default function AppShell() {
                           onClick={() => {
                             rememberGroupId(group.id);
                             navigate(`/groups/${group.id}`);
+                            closeDropdowns();
                           }}
                         >
                           <span>{group.emoji}</span>
@@ -98,6 +109,7 @@ export default function AppShell() {
                       type="button"
                       onClick={() => {
                         navigate("/groups/new");
+                        closeDropdowns();
                       }}
                     >
                       Create new group
@@ -109,6 +121,7 @@ export default function AppShell() {
                         type="button"
                         onClick={() => {
                           navigate(`/groups/${activeGroup.id}/edit`);
+                          closeDropdowns();
                         }}
                       >
                         Group settings
@@ -118,7 +131,7 @@ export default function AppShell() {
                 </ul>
               </details>
 
-              <details className="dropdown dropdown-end">
+              <details className="dropdown dropdown-end" ref={userDropdownRef}>
                 <summary
                   className="btn btn-sm gap-2"
                   aria-label={`User profile menu for ${profile.name || profile.email || user?.name || user?.email || "user"}`}
@@ -152,6 +165,7 @@ export default function AppShell() {
                       className={isProfileRoute ? "menu-active" : ""}
                       onClick={() => {
                         navigate("/profile");
+                        closeDropdowns();
                       }}
                     >
                       Profile
@@ -161,6 +175,7 @@ export default function AppShell() {
                     <button
                       type="button"
                       onClick={() => {
+                        closeDropdowns();
                         logout({
                           logoutParams: { returnTo: window.location.origin },
                         });
