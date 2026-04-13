@@ -39,6 +39,7 @@ export function createContactsRouter({ db, frontendBaseUrl }: RouteDeps) {
       }));
       return c.json({ contacts, sentInvites });
     } catch (err) {
+      console.error("[GET /api/contacts] Error:", err);
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -82,6 +83,7 @@ export function createContactsRouter({ db, frontendBaseUrl }: RouteDeps) {
         201,
       );
     } catch (err) {
+      console.error("[POST /api/contacts/invites] Error:", err);
       return c.json(
         {
           error: isUnauthorizedError(err)

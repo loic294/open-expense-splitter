@@ -55,6 +55,7 @@ export function createGroupsRouter({ db, frontendBaseUrl }: RouteDeps) {
         total: hydratedBatches.length,
       });
     } catch (err) {
+      console.error("[GET /api/groups] Error:", err);
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -128,6 +129,7 @@ export function createGroupsRouter({ db, frontendBaseUrl }: RouteDeps) {
         201,
       );
     } catch (err) {
+      console.error("[POST /api/groups] Error:", err);
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -212,6 +214,10 @@ export function createGroupsRouter({ db, frontendBaseUrl }: RouteDeps) {
         generatedInvites,
       });
     } catch (err) {
+      console.error("[PATCH /api/groups/:id] Error:", {
+        batchId: c.req.param("id"),
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -239,6 +245,10 @@ export function createGroupsRouter({ db, frontendBaseUrl }: RouteDeps) {
         invites: await getGroupPendingInvites(db, batchId, frontendBaseUrl),
       });
     } catch (err) {
+      console.error("[GET /api/groups/:id/member-invites] Error:", {
+        batchId: c.req.param("id"),
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -297,6 +307,10 @@ export function createGroupsRouter({ db, frontendBaseUrl }: RouteDeps) {
           members: await getBatchMembers(db, batchId),
         });
       } catch (err) {
+        console.error(
+          "[POST /api/groups/:id/temporary-members/:memberId/replace] Error:",
+          { batchId: c.req.param("id"), error: err },
+        );
         return c.json(
           {
             error: isUnauthorizedError(err)
@@ -329,6 +343,10 @@ export function createGroupsRouter({ db, frontendBaseUrl }: RouteDeps) {
         supportedCurrencies: SUPPORTED_CURRENCIES,
       });
     } catch (err) {
+      console.error("[GET /api/groups/:id/currency-preference] Error:", {
+        batchId: c.req.param("id"),
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -364,6 +382,10 @@ export function createGroupsRouter({ db, frontendBaseUrl }: RouteDeps) {
         supportedCurrencies: SUPPORTED_CURRENCIES,
       });
     } catch (err) {
+      console.error("[PUT /api/groups/:id/currency-preference] Error:", {
+        batchId: c.req.param("id"),
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -404,6 +426,10 @@ export function createGroupsRouter({ db, frontendBaseUrl }: RouteDeps) {
           );
       return c.json({ visibleColumns });
     } catch (err) {
+      console.error("[GET /api/groups/:id/column-visibility] Error:", {
+        groupId: c.req.param("id"),
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -446,6 +472,10 @@ export function createGroupsRouter({ db, frontendBaseUrl }: RouteDeps) {
         .run();
       return c.json({ visibleColumns: visibleColumns.split(",") });
     } catch (err) {
+      console.error("[PUT /api/groups/:id/column-visibility] Error:", {
+        groupId: c.req.param("id"),
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)

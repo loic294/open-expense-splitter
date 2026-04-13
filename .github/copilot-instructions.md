@@ -74,6 +74,14 @@ SQLite database features:
 Database location: `/app/data/app.db` (inside container)
 Local path in docker-compose volume: `db_data:`
 
+### Migration Expectations
+
+- Any change to the database schema — new tables, added/removed columns, new indexes — **must** be accompanied by a new migration file in `server/migrations/`.
+- Migration files are named with a sequential zero-padded number prefix followed by a short description: `NNNN_description.sql` (e.g. `0004_add_invites_table.sql`).
+- Use `CREATE TABLE IF NOT EXISTS` for new tables and `ALTER TABLE … ADD COLUMN` for new columns so migrations are safe to re-run.
+- Never modify an existing migration file. Always create a new one.
+- The deploy workflow (`deploy-cloudflare.yml`) runs `d1 migrations apply --remote` automatically, so new migration files are applied on every deploy to Cloudflare.
+
 ## Authentication
 
 - Auth0 JWT tokens required for protected endpoints

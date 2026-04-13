@@ -38,6 +38,10 @@ export function createPlatformInvitesRouter({
         ),
       });
     } catch (err) {
+      console.error("[GET /api/platform-invites/:token] Error:", {
+        token,
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -119,6 +123,10 @@ export function createPlatformInvitesRouter({
         acceptedByUserId: userId,
       });
     } catch (err) {
+      console.error("[POST /api/platform-invites/:token/accept] Error:", {
+        token,
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)

@@ -37,6 +37,10 @@ export function createGroupInvitesRouter({ db, frontendBaseUrl }: RouteDeps) {
         inviteUrl: buildInviteUrl(`/invites/group/${token}`, frontendBaseUrl),
       });
     } catch (err) {
+      console.error("[GET /api/group-invites/:token] Error:", {
+        token,
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -143,6 +147,10 @@ export function createGroupInvitesRouter({ db, frontendBaseUrl }: RouteDeps) {
       }
       return c.json({ message: "Invite accepted", groupId: invite.group_id });
     } catch (err) {
+      console.error("[POST /api/group-invites/:token/accept] Error:", {
+        token,
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)

@@ -19,6 +19,7 @@ export function createAuthRouter({ db }: RouteDeps) {
         .all();
       return c.json({ users: results, total: results.length });
     } catch (err) {
+      console.error("[GET /api/users] Error:", err);
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -42,6 +43,7 @@ export function createAuthRouter({ db }: RouteDeps) {
       if (!user) return c.json({ error: "User not found" }, 404);
       return c.json(user);
     } catch (err) {
+      console.error("[GET /api/me] Error:", err);
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -71,6 +73,7 @@ export function createAuthRouter({ db }: RouteDeps) {
         .run();
       return c.json({ message: "User created/updated", userId });
     } catch (err) {
+      console.error("[POST /api/auth/login] Error:", err);
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -114,6 +117,7 @@ export function createAuthRouter({ db }: RouteDeps) {
         .first();
       return c.json(updated);
     } catch (err) {
+      console.error("[PATCH /api/me] Error:", err);
       if (
         err instanceof Error &&
         err.message.includes("UNIQUE constraint failed")

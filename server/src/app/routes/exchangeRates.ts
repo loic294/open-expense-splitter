@@ -41,6 +41,11 @@ export function createExchangeRatesRouter({ db }: RouteDeps) {
         supportedCurrencies: SUPPORTED_CURRENCIES,
       });
     } catch (err) {
+      console.error("[POST /api/exchange-rates/resolve] Error:", {
+        baseCurrency: body.baseCurrency,
+        targetCurrency: body.targetCurrency,
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)

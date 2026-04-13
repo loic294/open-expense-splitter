@@ -64,6 +64,10 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         total: spendings.length,
       });
     } catch (err) {
+      console.error("[GET /api/spendings] Error:", {
+        batchId: c.req.query("batchId"),
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -96,6 +100,7 @@ export function createSpendingsRouter({ db }: RouteDeps) {
       }
       return c.json({ mapping });
     } catch (err) {
+      console.error("[GET /api/spendings/import-mapping] Error:", err);
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -127,6 +132,7 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         .run();
       return c.json({ mapping });
     } catch (err) {
+      console.error("[PUT /api/spendings/import-mapping] Error:", err);
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -215,6 +221,7 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         skippedCount: skipped,
       });
     } catch (err) {
+      console.error("[POST /api/spendings/import] Error:", err);
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -290,6 +297,7 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         201,
       );
     } catch (err) {
+      console.error("[POST /api/spendings] Error:", err);
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -368,6 +376,10 @@ export function createSpendingsRouter({ db }: RouteDeps) {
       const allSpendings = await getSpendingsForBatch(db, batchId);
       return c.json(allSpendings.find((s) => s.id === spendingId) ?? null);
     } catch (err) {
+      console.error("[PATCH /api/spendings/:id] Error:", {
+        transactionId: c.req.param("id"),
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -402,6 +414,10 @@ export function createSpendingsRouter({ db }: RouteDeps) {
         .run();
       return c.json({ id: spendingId, message: "Transaction deleted" });
     } catch (err) {
+      console.error("[DELETE /api/spendings/:id] Error:", {
+        transactionId: c.req.param("id"),
+        error: err,
+      });
       return c.json(
         {
           error: isUnauthorizedError(err)

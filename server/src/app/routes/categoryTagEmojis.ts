@@ -92,11 +92,7 @@ export function createCategoryTagEmojisRouter({ db }: RouteDeps) {
 
       return c.json({ success: true, emoji: body.emoji });
     } catch (err) {
-      console.error("[POST /api/batches/:batchId/emojis] Error:", {
-        type: body.type,
-        name: body.name,
-        error: err,
-      });
+      console.error("[POST /api/batches/:batchId/emojis] Error:", err);
       return c.json(
         {
           error: isUnauthorizedError(err)
@@ -132,11 +128,7 @@ export function createCategoryTagEmojisRouter({ db }: RouteDeps) {
     } catch (err) {
       console.error(
         "[DELETE /api/batches/:batchId/emojis/:type/:name] Error:",
-        {
-          type,
-          name,
-          error: err,
-        },
+        err,
       );
       return c.json(
         {
