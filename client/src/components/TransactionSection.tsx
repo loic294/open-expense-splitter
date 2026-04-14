@@ -77,6 +77,64 @@ function summarizeTransaction(transaction: Transaction) {
   };
 }
 
+function MemberAvatar({ member }: { member: GroupMember }) {
+  const initial = (memberName(member).trim()[0] ?? "U").toUpperCase();
+  return (
+    <span className="avatar">
+      <span className="w-5 rounded-full bg-base-200 text-[10px] font-medium text-base-content/70 flex items-center justify-center overflow-hidden shrink-0">
+        {member.picture ? (
+          <img src={member.picture} alt="" aria-hidden="true" />
+        ) : (
+          initial
+        )}
+      </span>
+    </span>
+  );
+}
+
+function PaidBySelect({
+  members,
+  value,
+  onChange,
+}: {
+  members: GroupMember[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const selected = members.find((m) => m.id === value) ?? members[0];
+  return (
+    <details className="dropdown w-full">
+      <summary className="btn btn-sm w-full min-w-28 justify-start gap-2 font-normal">
+        {selected && (
+          <>
+            <MemberAvatar member={selected} />
+            <span className="truncate flex-1 text-left">
+              {memberName(selected)}
+            </span>
+          </>
+        )}
+      </summary>
+      <ul className="dropdown-content menu bg-base-100 rounded-box z-50 w-52 p-1 shadow-lg border border-base-300">
+        {members.map((member) => (
+          <li key={member.id}>
+            <button
+              type="button"
+              className={member.id === value ? "active" : ""}
+              onClick={() => {
+                onChange(member.id);
+                (document.activeElement as HTMLElement)?.blur();
+              }}
+            >
+              <MemberAvatar member={member} />
+              <span className="truncate">{memberName(member)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 function getVisibleColumns(group?: Group): TransactionColumnType[] {
   const defaults: TransactionColumnType[] = [
     "name",
@@ -1739,23 +1797,16 @@ export default function TransactionSection({
                         )}
                         {getVisibleColumns(group).includes("paid_by") && (
                           <td>
-                            <select
-                              className="select select-sm w-full min-w-24"
-                              aria-label="Paid by"
+                            <PaidBySelect
+                              members={group.members}
                               value={transaction.paidById}
-                              onChange={(event) =>
+                              onChange={(id) =>
                                 updateTransaction(transaction.id, (item) => ({
                                   ...item,
-                                  paidById: event.target.value,
+                                  paidById: id,
                                 }))
                               }
-                            >
-                              {group.members.map((member) => (
-                                <option key={member.id} value={member.id}>
-                                  {memberName(member)}
-                                </option>
-                              ))}
-                            </select>
+                            />
                           </td>
                         )}
                         {getVisibleColumns(group).includes("date") && (
