@@ -996,6 +996,7 @@ export default function TransactionSection({
     inputValue: string;
     transactionId: string | null;
   }>({ open: false, inputValue: "", transactionId: null });
+  const [tagSelectOpen, setTagSelectOpen] = useState<Set<string>>(new Set());
 
   const [sortField, setSortField] = useState<
     | "name"
@@ -2214,56 +2215,79 @@ export default function TransactionSection({
                                     </button>
                                   </div>
                                 ))}
-                              <select
-                                className="select select-sm !select-xs min-w-24 max-w-32 h-6"
-                                defaultValue=""
-                                onChange={(event) => {
-                                  const value = event.target.value.trim();
-                                  if (value === "add-new") {
-                                    setNewTagDialog({
-                                      open: true,
-                                      inputValue: "",
-                                      transactionId: transaction.id,
-                                    });
-                                    event.target.value = "";
-                                  } else if (value) {
-                                    const currentTags = transaction.tags
-                                      .split(",")
-                                      .map((t) => t.trim())
-                                      .filter(Boolean);
-                                    if (!currentTags.includes(value)) {
-                                      const newTags = [
-                                        ...currentTags,
-                                        value,
-                                      ].sort();
-                                      updateTransaction(
-                                        transaction.id,
-                                        (item) => ({
-                                          ...item,
-                                          tags: newTags.join(", "),
-                                        }),
-                                      );
-                                      addTags(value, setTags);
-                                    }
-                                    event.target.value = "";
+                              <div className="flex gap-1 items-center">
+                                {tagSelectOpen.has(transaction.id) && (
+                                  <select
+                                    className="select select-sm min-w-24 max-w-40 h-8"
+                                    defaultValue=""
+                                    onChange={(event) => {
+                                      const value = event.target.value.trim();
+                                      if (value === "add-new") {
+                                        setNewTagDialog({
+                                          open: true,
+                                          inputValue: "",
+                                          transactionId: transaction.id,
+                                        });
+                                        event.target.value = "";
+                                      } else if (value) {
+                                        const currentTags = transaction.tags
+                                          .split(",")
+                                          .map((t) => t.trim())
+                                          .filter(Boolean);
+                                        if (!currentTags.includes(value)) {
+                                          const newTags = [
+                                            ...currentTags,
+                                            value,
+                                          ].sort();
+                                          updateTransaction(
+                                            transaction.id,
+                                            (item) => ({
+                                              ...item,
+                                              tags: newTags.join(", "),
+                                            }),
+                                          );
+                                          addTags(value, setTags);
+                                        }
+                                        event.target.value = "";
+                                      }
+                                    }}
+                                  >
+                                    <option value="">Select a tag…</option>
+                                    {tags
+                                      .filter(
+                                        (tag) => !transaction.tags.includes(tag),
+                                      )
+                                      .map((tag) => (
+                                        <option key={tag} value={tag}>
+                                          {emojiMap.tag[tag] &&
+                                            `${emojiMap.tag[tag]} `}
+                                          {tag}
+                                        </option>
+                                      ))}
+                                    <option disabled>—</option>
+                                    <option value="add-new">+ Add new tag</option>
+                                  </select>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm btn-square h-8 w-8 min-h-fit"
+                                  onClick={() =>
+                                    setTagSelectOpen((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(transaction.id)) {
+                                        next.delete(transaction.id);
+                                      } else {
+                                        next.add(transaction.id);
+                                      }
+                                      return next;
+                                    })
                                   }
-                                }}
-                              >
-                                <option value="">+</option>
-                                {tags
-                                  .filter(
-                                    (tag) => !transaction.tags.includes(tag),
-                                  )
-                                  .map((tag) => (
-                                    <option key={tag} value={tag}>
-                                      {emojiMap.tag[tag] &&
-                                        `${emojiMap.tag[tag]} `}
-                                      {tag}
-                                    </option>
-                                  ))}
-                                <option disabled>—</option>
-                                <option value="add-new">+ Add new tag</option>
-                              </select>
+                                  aria-label={tagSelectOpen.has(transaction.id) ? "Close tag selector" : "Add tag"}
+                                  title={tagSelectOpen.has(transaction.id) ? "Close" : "Add tag"}
+                                >
+                                  {tagSelectOpen.has(transaction.id) ? "✕" : "＋"}
+                                </button>
+                              </div>
                             </div>
                           </td>
                         )}
