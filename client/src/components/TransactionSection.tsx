@@ -1302,7 +1302,7 @@ export default function TransactionSection({
     }, 350);
   };
 
-  const updateTransaction = (
+  const updateTransactionLocal = (
     transactionId: string,
     updater: (transaction: Transaction) => Transaction,
   ) => {
@@ -1312,6 +1312,26 @@ export default function TransactionSection({
     const nextTransaction = updater(current);
 
     console.debug("[transactions] local update", {
+      transactionId,
+      before: summarizeTransaction(current),
+      after: summarizeTransaction(nextTransaction),
+    });
+
+    setTransactions((prev) =>
+      prev.map((t) => (t.id === transactionId ? nextTransaction : t)),
+    );
+  };
+
+  const updateTransaction = (
+    transactionId: string,
+    updater: (transaction: Transaction) => Transaction,
+  ) => {
+    const current = transactions.find((t) => t.id === transactionId);
+    if (!current) return;
+
+    const nextTransaction = updater(current);
+
+    console.debug("[transactions] local update and schedule save", {
       transactionId,
       before: summarizeTransaction(current),
       after: summarizeTransaction(nextTransaction),
@@ -1956,10 +1976,13 @@ export default function TransactionSection({
                               value={transaction.name}
                               aria-label="Transaction name"
                               onChange={(event) =>
-                                updateTransaction(transaction.id, (item) => ({
-                                  ...item,
-                                  name: event.target.value,
-                                }))
+                                updateTransactionLocal(
+                                  transaction.id,
+                                  (item) => ({
+                                    ...item,
+                                    name: event.target.value,
+                                  }),
+                                )
                               }
                               onBlur={(event) =>
                                 updateTransaction(transaction.id, (item) => ({
@@ -1986,10 +2009,13 @@ export default function TransactionSection({
                               }
                               placeholder="0.00"
                               onChange={(event) =>
-                                updateTransaction(transaction.id, (item) => ({
-                                  ...item,
-                                  amount: Number(event.target.value || 0),
-                                }))
+                                updateTransactionLocal(
+                                  transaction.id,
+                                  (item) => ({
+                                    ...item,
+                                    amount: Number(event.target.value || 0),
+                                  }),
+                                )
                               }
                               onBlur={(event) =>
                                 updateTransaction(transaction.id, (item) => ({
@@ -2071,10 +2097,13 @@ export default function TransactionSection({
                               aria-label="Transaction date"
                               value={transaction.transactionDate}
                               onChange={(event) =>
-                                updateTransaction(transaction.id, (item) => ({
-                                  ...item,
-                                  transactionDate: event.target.value,
-                                }))
+                                updateTransactionLocal(
+                                  transaction.id,
+                                  (item) => ({
+                                    ...item,
+                                    transactionDate: event.target.value,
+                                  }),
+                                )
                               }
                               onBlur={(event) =>
                                 updateTransaction(transaction.id, (item) => ({
@@ -2129,10 +2158,13 @@ export default function TransactionSection({
                               aria-label="Description"
                               value={transaction.description}
                               onChange={(event) =>
-                                updateTransaction(transaction.id, (item) => ({
-                                  ...item,
-                                  description: event.target.value,
-                                }))
+                                updateTransactionLocal(
+                                  transaction.id,
+                                  (item) => ({
+                                    ...item,
+                                    description: event.target.value,
+                                  }),
+                                )
                               }
                               onBlur={(event) =>
                                 updateTransaction(transaction.id, (item) => ({
