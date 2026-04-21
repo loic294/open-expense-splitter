@@ -2255,7 +2255,8 @@ export default function TransactionSection({
                                     <option value="">Select a tag…</option>
                                     {tags
                                       .filter(
-                                        (tag) => !transaction.tags.includes(tag),
+                                        (tag) =>
+                                          !transaction.tags.includes(tag),
                                       )
                                       .map((tag) => (
                                         <option key={tag} value={tag}>
@@ -2265,7 +2266,9 @@ export default function TransactionSection({
                                         </option>
                                       ))}
                                     <option disabled>—</option>
-                                    <option value="add-new">+ Add new tag</option>
+                                    <option value="add-new">
+                                      + Add new tag
+                                    </option>
                                   </select>
                                 )}
                                 <button
@@ -2282,10 +2285,20 @@ export default function TransactionSection({
                                       return next;
                                     })
                                   }
-                                  aria-label={tagSelectOpen.has(transaction.id) ? "Close tag selector" : "Add tag"}
-                                  title={tagSelectOpen.has(transaction.id) ? "Close" : "Add tag"}
+                                  aria-label={
+                                    tagSelectOpen.has(transaction.id)
+                                      ? "Close tag selector"
+                                      : "Add tag"
+                                  }
+                                  title={
+                                    tagSelectOpen.has(transaction.id)
+                                      ? "Close"
+                                      : "Add tag"
+                                  }
                                 >
-                                  {tagSelectOpen.has(transaction.id) ? "✕" : "＋"}
+                                  {tagSelectOpen.has(transaction.id)
+                                    ? "✕"
+                                    : "＋"}
                                 </button>
                               </div>
                             </div>
