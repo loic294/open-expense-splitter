@@ -77,8 +77,13 @@ function summarizeTransaction(transaction: Transaction) {
   };
 }
 
+function memberInitial(member: GroupMember) {
+  const label = memberName(member).trim();
+  return label ? label[0].toUpperCase() : "U";
+}
+
 function MemberAvatar({ member }: { member: GroupMember }) {
-  const initial = (memberName(member).trim()[0] ?? "U").toUpperCase();
+  const initial = memberInitial(member);
   return (
     <span className="avatar">
       <span className="w-5 rounded-full bg-base-200 text-[10px] font-medium text-base-content/70 flex items-center justify-center overflow-hidden shrink-0">
@@ -90,6 +95,54 @@ function MemberAvatar({ member }: { member: GroupMember }) {
       </span>
     </span>
   );
+}
+
+function compactSplitLabel(transaction: Transaction, members: GroupMember[]) {
+  const includedIds =
+    transaction.splitData.includedMemberIds.length > 0
+      ? transaction.splitData.includedMemberIds
+      : members.map((member) => member.id);
+
+  if (includedIds.length === 0) {
+    return "Equal";
+  }
+
+  const memberById = new Map(members.map((member) => [member.id, member]));
+
+  const shortName = (memberId: string) => {
+    const member = memberById.get(memberId);
+    if (member) {
+      return memberInitial(member);
+    }
+
+    const fallback = memberId.trim();
+    return fallback ? fallback[0].toUpperCase() : "?";
+  };
+
+  if (transaction.splitType === "percent") {
+    return includedIds
+      .map((memberId) => {
+        const value = Math.round(
+          Number(transaction.splitData.values[memberId] ?? 0),
+        );
+        return `${shortName(memberId)} ${value}%`;
+      })
+      .join(" · ");
+  }
+
+  if (transaction.splitType === "amount") {
+    return includedIds
+      .map((memberId) => {
+        const value = Number(transaction.splitData.values[memberId] ?? 0);
+        return `${shortName(memberId)} ${value.toFixed(2)}`;
+      })
+      .join(" · ");
+  }
+
+  const equalShare = Math.round(100 / includedIds.length);
+  return includedIds
+    .map((memberId) => `${shortName(memberId)} ${equalShare}%`)
+    .join(" · ");
 }
 
 function PaidBySelect({
@@ -268,6 +321,95 @@ function AdvancedSplitModal({
         </div>
       </div>
     </dialog>
+  );
+}
+
+function SplitQuickSelectPopover({
+  transaction,
+  members,
+  position,
+  placement,
+  onMemberToggle,
+  onOpenAdvanced,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  transaction: Transaction;
+  members: GroupMember[];
+  position: { top: number; left: number };
+  placement: "above" | "below";
+  onMemberToggle: (memberId: string) => void;
+  onOpenAdvanced: () => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  return createPortal(
+    <div
+      className="pointer-events-none fixed z-50"
+      style={{
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+        transform: placement === "above" ? "translateY(-100%)" : undefined,
+      }}
+    >
+      <div
+        className="pointer-events-auto card card-border w-72 bg-base-100 shadow-lg"
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      >
+        <div className="card-body gap-3 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">Included people</h3>
+              <p className="text-xs text-base-content/70 capitalize">
+                {transaction.splitType} split
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-xs btn-ghost"
+              onClick={onOpenAdvanced}
+            >
+              Advanced
+            </button>
+          </div>
+
+          <div className="flex max-h-64 flex-col gap-2 overflow-y-auto">
+            {members.map((member) => {
+              const included = transaction.splitData.includedMemberIds.includes(
+                member.id,
+              );
+
+              return (
+                <label
+                  key={member.id}
+                  className="flex cursor-pointer items-center justify-between gap-3 rounded-md border border-base-300 px-2 py-1.5 hover:bg-base-200"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <MemberAvatar member={member} />
+                    <span className="truncate text-sm">
+                      {memberName(member)}
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    className="checkbox checkbox-sm"
+                    checked={included}
+                    onChange={() => onMemberToggle(member.id)}
+                  />
+                </label>
+              );
+            })}
+          </div>
+
+          <p className="text-xs text-base-content/60">
+            Hover here to keep editing. Click the split value for exact amounts
+            or percentages.
+          </p>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -785,6 +927,8 @@ export default function TransactionSection({
   const navbarTarget = useNavbarActionsTarget();
   const saveTimersRef = useRef<Record<string, number>>({});
   const csvInputRef = useRef<HTMLInputElement | null>(null);
+  const splitButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const splitPopoverCloseTimerRef = useRef<number | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
@@ -802,6 +946,11 @@ export default function TransactionSection({
   const [activeSplitTransactionId, setActiveSplitTransactionId] = useState<
     string | null
   >(null);
+  const [splitPopover, setSplitPopover] = useState<{
+    transactionId: string;
+    position: { top: number; left: number };
+    placement: "above" | "below";
+  } | null>(null);
   const [splitEditor, setSplitEditor] = useState<{
     splitType: SplitType;
     splitData: SplitData;
@@ -943,16 +1092,38 @@ export default function TransactionSection({
   useEffect(() => {
     return () => {
       Object.keys(saveTimersRef.current).forEach(clearTransactionTimer);
+      if (splitPopoverCloseTimerRef.current) {
+        window.clearTimeout(splitPopoverCloseTimerRef.current);
+      }
     };
   }, []);
 
   useEffect(() => {
     setActiveSplitTransactionId(null);
+    setSplitPopover(null);
     setSplitEditor(null);
     setImportState(null);
     setPaidByIdMapping({});
     setImportError(null);
   }, [group.id]);
+
+  useEffect(() => {
+    if (!splitPopover) {
+      return;
+    }
+
+    const dismissPopover = () => {
+      setSplitPopover(null);
+    };
+
+    window.addEventListener("scroll", dismissPopover, true);
+    window.addEventListener("resize", dismissPopover);
+
+    return () => {
+      window.removeEventListener("scroll", dismissPopover, true);
+      window.removeEventListener("resize", dismissPopover);
+    };
+  }, [splitPopover]);
 
   useEffect(() => {
     const fetchSavedMapping = async () => {
@@ -1151,6 +1322,86 @@ export default function TransactionSection({
     );
 
     scheduleTransactionSave(nextTransaction);
+  };
+
+  const clearSplitPopoverCloseTimer = () => {
+    if (splitPopoverCloseTimerRef.current) {
+      window.clearTimeout(splitPopoverCloseTimerRef.current);
+      splitPopoverCloseTimerRef.current = null;
+    }
+  };
+
+  const scheduleSplitPopoverClose = () => {
+    clearSplitPopoverCloseTimer();
+    splitPopoverCloseTimerRef.current = window.setTimeout(() => {
+      setSplitPopover(null);
+    }, 120);
+  };
+
+  const openSplitPopover = (transactionId: string) => {
+    clearSplitPopoverCloseTimer();
+
+    const anchor = splitButtonRefs.current[transactionId];
+    if (!anchor) {
+      return;
+    }
+
+    const rect = anchor.getBoundingClientRect();
+    const width = 288;
+    const margin = 8;
+    const preferAbove =
+      window.innerHeight - rect.bottom < 260 && rect.top > 260;
+    const left = Math.min(
+      Math.max(margin, rect.left),
+      Math.max(margin, window.innerWidth - width - margin),
+    );
+
+    setSplitPopover({
+      transactionId,
+      position: {
+        top: preferAbove ? rect.top - margin : rect.bottom + margin,
+        left,
+      },
+      placement: preferAbove ? "above" : "below",
+    });
+  };
+
+  const openAdvancedSplitEditor = (transaction: Transaction) => {
+    setSplitPopover(null);
+    setActiveSplitTransactionId(transaction.id);
+    setSplitEditor({
+      splitType: transaction.splitType,
+      splitData: {
+        includedMemberIds: [...transaction.splitData.includedMemberIds],
+        values: { ...transaction.splitData.values },
+      },
+    });
+  };
+
+  const toggleTransactionSplitMember = (
+    transactionId: string,
+    memberId: string,
+  ) => {
+    updateTransaction(transactionId, (transaction) => {
+      const includedMemberIds =
+        transaction.splitData.includedMemberIds.includes(memberId)
+          ? transaction.splitData.includedMemberIds.filter(
+              (id) => id !== memberId,
+            )
+          : [...transaction.splitData.includedMemberIds, memberId];
+
+      return {
+        ...transaction,
+        splitData: {
+          ...transaction.splitData,
+          includedMemberIds,
+          values: {
+            ...transaction.splitData.values,
+            [memberId]: transaction.splitData.values[memberId] ?? 0,
+          },
+        },
+      };
+    });
   };
 
   const createTransaction = async () => {
@@ -1776,22 +2027,25 @@ export default function TransactionSection({
                           <td>
                             <button
                               type="button"
-                              className="btn btn-sm"
-                              onClick={() => {
-                                setActiveSplitTransactionId(transaction.id);
-                                setSplitEditor({
-                                  splitType: transaction.splitType,
-                                  splitData: {
-                                    includedMemberIds: [
-                                      ...transaction.splitData
-                                        .includedMemberIds,
-                                    ],
-                                    values: { ...transaction.splitData.values },
-                                  },
-                                });
+                              ref={(element) => {
+                                splitButtonRefs.current[transaction.id] =
+                                  element;
                               }}
+                              className="btn btn-sm max-w-64 justify-start"
+                              aria-label={`Split: ${splitLabel(transaction, group.members)}`}
+                              onMouseEnter={() =>
+                                openSplitPopover(transaction.id)
+                              }
+                              onMouseLeave={scheduleSplitPopoverClose}
+                              onFocus={() => openSplitPopover(transaction.id)}
+                              onBlur={scheduleSplitPopoverClose}
+                              onClick={() =>
+                                openAdvancedSplitEditor(transaction)
+                              }
                             >
-                              {splitLabel(transaction, group.members)}
+                              <span className="truncate">
+                                {compactSplitLabel(transaction, group.members)}
+                              </span>
                             </button>
                           </td>
                         )}
@@ -2092,6 +2346,32 @@ export default function TransactionSection({
           onSave={saveAdvancedSplit}
         />
       )}
+
+      {splitPopover &&
+        (() => {
+          const transaction = transactions.find(
+            (item) => item.id === splitPopover.transactionId,
+          );
+
+          if (!transaction) {
+            return null;
+          }
+
+          return (
+            <SplitQuickSelectPopover
+              transaction={transaction}
+              members={group.members}
+              position={splitPopover.position}
+              placement={splitPopover.placement}
+              onMemberToggle={(memberId) =>
+                toggleTransactionSplitMember(transaction.id, memberId)
+              }
+              onOpenAdvanced={() => openAdvancedSplitEditor(transaction)}
+              onMouseEnter={clearSplitPopoverCloseTimer}
+              onMouseLeave={scheduleSplitPopoverClose}
+            />
+          );
+        })()}
 
       {importState && (
         <CsvImportModal
