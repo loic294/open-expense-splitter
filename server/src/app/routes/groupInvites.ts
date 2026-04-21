@@ -13,9 +13,9 @@ export function createGroupInvitesRouter({ db, frontendBaseUrl }: RouteDeps) {
   const router = new Hono<HonoCtx>();
 
   router.get("/api/group-invites/:token", async (c) => {
+    const token = c.req.param("token");
     try {
       requireAuth(c);
-      const token = c.req.param("token");
       const invite = await db
         .prepare(
           `SELECT gmi.id, gmi.email, gmi.status, gmi.created_at,
@@ -53,10 +53,10 @@ export function createGroupInvitesRouter({ db, frontendBaseUrl }: RouteDeps) {
   });
 
   router.post("/api/group-invites/:token/accept", async (c) => {
+    const token = c.req.param("token");
     try {
       const auth = requireAuth(c);
       const userId = getUserIdFromSub(auth.sub);
-      const token = c.req.param("token");
 
       const invite = await db
         .prepare(

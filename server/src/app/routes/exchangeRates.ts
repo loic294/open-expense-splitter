@@ -8,9 +8,16 @@ export function createExchangeRatesRouter({ db }: RouteDeps) {
   const router = new Hono<HonoCtx>();
 
   router.post("/api/exchange-rates/resolve", async (c) => {
+    let body:
+      | {
+          baseCurrency?: string;
+          targetCurrency?: string;
+          dates?: string[];
+        }
+      | undefined;
     try {
       requireAuth(c);
-      const body = await c.req.json<{
+      body = await c.req.json<{
         baseCurrency?: string;
         targetCurrency?: string;
         dates?: string[];

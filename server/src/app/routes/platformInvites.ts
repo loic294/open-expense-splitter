@@ -15,9 +15,9 @@ export function createPlatformInvitesRouter({
   const router = new Hono<HonoCtx>();
 
   router.get("/api/platform-invites/:token", async (c) => {
+    const token = c.req.param("token");
     try {
       requireAuth(c);
-      const token = c.req.param("token");
       const invite = await db
         .prepare(
           `SELECT pi.id, pi.email, pi.status, pi.created_at,
@@ -54,10 +54,10 @@ export function createPlatformInvitesRouter({
   });
 
   router.post("/api/platform-invites/:token/accept", async (c) => {
+    const token = c.req.param("token");
     try {
       const auth = requireAuth(c);
       const userId = getUserIdFromSub(auth.sub);
-      const token = c.req.param("token");
       const invite = await db
         .prepare(
           "SELECT id, inviter_user_id, email, status FROM platform_invites WHERE token = ? LIMIT 1",
